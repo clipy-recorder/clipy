@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -61,6 +61,47 @@ describe("extractAudio", () => {
     const ac = new AbortController();
     ac.abort();
     await expect(extractAudio(video, join(dir, "z.wav"), ac.signal)).rejects.toThrow(/cancelled/);
+  });
+});
+
+describe("readWavInfo", () => {
+  it("finds the data chunk after a large metadata chunk", async () => {
+    const list = Buffer.alloc(70_008);
+    list.write("LIST", 0, "ascii");
+    list.writeUInt32LE(list.length - 8, 4);
+    list.write("INFO", 8, "ascii");
+
+    const fmt = Buffer.alloc(24);
+    fmt.write("fmt ", 0, "ascii");
+    fmt.writeUInt32LE(16, 4);
+    fmt.writeUInt16LE(1, 8);
+    fmt.writeUInt16LE(1, 10);
+    fmt.writeUInt32LE(16_000, 12);
+    fmt.writeUInt32LE(32_000, 16);
+    fmt.writeUInt16LE(2, 20);
+    fmt.writeUInt16LE(16, 22);
+
+    const data = Buffer.alloc(12);
+    data.write("data", 0, "ascii");
+    data.writeUInt32LE(4, 4);
+
+    const wav = Buffer.alloc(12 + list.length + fmt.length + data.length);
+    wav.write("RIFF", 0, "ascii");
+    wav.writeUInt32LE(wav.length - 8, 4);
+    wav.write("WAVE", 8, "ascii");
+    list.copy(wav, 12);
+    fmt.copy(wav, 12 + list.length);
+    data.copy(wav, 12 + list.length + fmt.length);
+
+    const path = join(dir, "large-metadata.wav");
+    writeFileSync(path, wav);
+    await expect(readWavInfo(path)).resolves.toMatchObject({
+      sampleRate: 16_000,
+      channels: 1,
+      bitsPerSample: 16,
+      dataBytes: 4,
+      durationSec: 4 / 32_000,
+    });
   });
 });
 
