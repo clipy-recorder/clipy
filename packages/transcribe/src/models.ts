@@ -155,7 +155,13 @@ export function modelStatus(model: LocalModelId, modelDir?: string): { installed
 }
 
 export function formatBytes(n: number): string {
-  return `${Math.round(n / 1_000_000)} MB`;
+  if (n >= 1_000_000_000) {
+    return `${(n / 1_000_000_000).toFixed(1)} GB`;
+  }
+  if (n >= 1_000_000) {
+    return `${Math.round(n / 1_000_000)} MB`;
+  }
+  return `${Math.round(n / 1_000)} KB`;
 }
 
 export class ChecksumError extends Error {
