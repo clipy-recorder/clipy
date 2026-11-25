@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson, sleep } from "./http.js";
-import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
+import { groupWordsIntoSegments, toTimeline, wordJoiner } from "../chunking.js";
 import type { AudioInput, EngineOutput } from "./common.js";
 
 export const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com";
@@ -77,7 +77,10 @@ export async function transcribeAssemblyAI(
   const segments =
     job.utterances && job.utterances.length > 0
       ? job.utterances.map((u) => ({ start: u.start / 1000, end: u.end / 1000, text: u.text }))
-      : groupWordsIntoSegments((job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text })));
+      : groupWordsIntoSegments(
+          (job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text })),
+          wordJoiner(job.language_code),
+        );
   input.onProgress?.(1);
   return {
     segments: toTimeline(segments),

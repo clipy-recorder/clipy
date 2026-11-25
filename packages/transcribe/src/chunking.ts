@@ -273,6 +273,17 @@ export interface TimedWord {
 
 const SENTENCE_END = /[.!?。！？]["')\]]*$/;
 
+const NO_SPACE_LANGUAGES = new Set([
+  "ja", "jpn", "zh", "zho", "chi", "cmn", "yue", "wuu", "nan", "hak",
+  "th", "tha", "lo", "lao", "my", "mya", "bur", "km", "khm", "bo", "bod", "tib", "dz", "dzo",
+]);
+
+/** Word separator for `language` (empty for languages written without spaces). */
+export function wordJoiner(language?: string | null): string {
+  const primary = language?.trim().toLowerCase().split(/[-_]/)[0];
+  return primary && NO_SPACE_LANGUAGES.has(primary) ? "" : " ";
+}
+
 /**
  * Group words into readable segments: break at a sentence end once a segment
  * has a few seconds in it, at a long pause, or once it runs too long.

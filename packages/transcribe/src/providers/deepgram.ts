@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
-import { groupWordsIntoSegments, toTimeline, type RelativeSegment } from "../chunking.js";
+import { groupWordsIntoSegments, toTimeline, wordJoiner, type RelativeSegment } from "../chunking.js";
 import type { AudioInput, EngineOutput } from "./common.js";
 
 export const DEEPGRAM_BASE_URL = "https://api.deepgram.com";
@@ -57,7 +57,10 @@ export async function transcribeDeepgram(
     segments = utterances.map((u) => ({ start: u.start, end: u.end, text: u.transcript }));
   } else {
     const words = channel?.alternatives?.[0]?.words ?? [];
-    segments = groupWordsIntoSegments(words.map((w) => ({ start: w.start, end: w.end, text: w.punctuated_word ?? w.word })));
+    segments = groupWordsIntoSegments(
+      words.map((w) => ({ start: w.start, end: w.end, text: w.punctuated_word ?? w.word })),
+      wordJoiner(channel?.detected_language),
+    );
   }
   input.onProgress?.(1);
   return {
