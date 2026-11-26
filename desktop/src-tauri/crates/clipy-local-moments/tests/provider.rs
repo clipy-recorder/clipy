@@ -345,3 +345,16 @@ async fn never_asks_without_a_transcript_or_with_invalid_input() {
     assert!(matches!(error, PlannerError::InvalidConfig(_)), "{error:?}");
     assert!(server.requests().is_empty());
 }
+
+#[tokio::test]
+async fn accepts_prose_wrapped_fenced_json_responses() {
+    let wrapped = format!("Here are the moments:\n\n```json\n{GOOD}\n```");
+    let server = serve(move |_| Reply::completion(&wrapped)).await;
+    let plan = plan_with_provider(&input(), &config(&server.base_url))
+        .await
+        .unwrap();
+    assert_eq!(plan.planner, Planner::RulesAndModel);
+    assert_eq!(plan.moments.len(), 1);
+    assert_eq!(plan.moments[0].source, MomentSource::Spoken);
+    assert_eq!(plan.moments[0].timestamp_ms, 1000);
+}

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fixture from "./fixtures/flare-sample.json" with { type: "json" };
+import fenceCases from "./fixtures/code-fence-cases.json" with { type: "json" };
 import {
   boundInteractions,
   describePlannerError,
@@ -11,7 +12,7 @@ import {
   planMoments,
   type LocalMomentInput,
 } from "../src/index.js";
-import { MAX_COMPLETION_BYTES } from "../src/llm.js";
+import { MAX_COMPLETION_BYTES, stripCodeFence } from "../src/llm.js";
 import { localPlannerRetry } from "../src/generated/localMomentPlan.js";
 import { detectAnnotationSpans, detectFlareSpans } from "../src/generated/keyMomentsCursorContext.js";
 
@@ -52,7 +53,7 @@ afterEach(() => {
  * `failFirst` answers the first request with a 503, so the planner waits and
  * retries: the retry reads the provider again after other calls have run.
  */
-async function fakeProvider(reply: unknown, opts: { failFirst?: boolean } = {}) {
+async function fakeProvider(reply: unknown, opts: { failFirst?: boolean; rawContent?: boolean } = {}) {
   const seen: { auth?: string; body?: Record<string, unknown>; requests: number } = { requests: 0 };
   const server = createServer(async (req: IncomingMessage, res) => {
     let raw = "";
@@ -66,7 +67,8 @@ async function fakeProvider(reply: unknown, opts: { failFirst?: boolean } = {}) 
       return;
     }
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(reply) } }] }));
+    const content = opts.rawContent ? String(reply) : JSON.stringify(reply);
+    res.end(JSON.stringify({ choices: [{ message: { content } }] }));
   });
   servers.push(server);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -367,5 +369,23 @@ describe("long typing sessions", () => {
       expect(kept.has(down)).toBe(kept.has(up));
     }
     expect(pairs.some((d) => kept.has(d))).toBe(true);
+  });
+});
+
+describe("stripCodeFence", () => {
+  it.each(fenceCases)("$name", ({ input, expected }) => {
+    expect(stripCodeFence(input)).toBe(expected);
+  });
+
+  it("accepts prose-wrapped fenced JSON responses from a provider", async () => {
+    const wrapped = `Here are the moments:\n\n\`\`\`json\n${JSON.stringify({ moments: fixture.llmMoments })}\n\`\`\``;
+    const { baseUrl } = await fakeProvider(wrapped, { rawContent: true });
+    const { plan, planner } = await planMoments(payload(), {
+      provider: { baseUrl, apiKey: "test-key", model: "test/model" },
+    });
+    expect(planner).toBe("rules+model");
+    const moments = v2(plan);
+    const spoken = moments.filter((m) => m.source === "spoken" || m.source === "fused" || m.source === "hover");
+    expect(spoken.map((m) => m.timestamp_ms)).toEqual(expect.arrayContaining([10_120, 15_190, 25_130]));
   });
 });

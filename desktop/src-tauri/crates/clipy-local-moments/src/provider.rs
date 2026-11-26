@@ -525,21 +525,41 @@ async fn one_attempt(
     serde_json::from_str(strip_code_fence(text)).map_err(|_| PlannerError::Unparseable { status })
 }
 
-/// The JSON inside a ```json fence, or the text itself.
+/// The JSON inside a ```json (or unlabelled ```) fence, or the text itself.
 fn strip_code_fence(text: &str) -> &str {
-    let t = text.trim_start_matches(js::is_space);
-    let Some(rest) = t.strip_prefix("```") else {
+    let trimmed_start = text.trim_start_matches(js::is_space);
+    if trimmed_start.starts_with('{') || trimmed_start.starts_with('[') {
         return text;
-    };
-    let rest = match rest.get(..4) {
-        Some(tag) if tag.eq_ignore_ascii_case("json") => &rest[4..],
-        _ => rest,
-    };
-    let rest = rest.trim_start_matches(js::is_space);
-    let Some(inner) = rest.trim_end_matches(js::is_space).strip_suffix("```") else {
-        return text;
-    };
-    inner.trim_end_matches(js::is_space)
+    }
+    let mut first_unlabelled: Option<&str> = None;
+    let mut pos = 0;
+    while let Some(rel_open) = text[pos..].find("```") {
+        let after_open = pos + rel_open + 3;
+        let rest_after_open = &text[after_open..];
+        let mut label_end = rest_after_open.len();
+        for (idx, ch) in rest_after_open.char_indices() {
+            if js::is_space(ch) || rest_after_open[idx..].starts_with("```") {
+                label_end = idx;
+                break;
+            }
+        }
+        let label = &rest_after_open[..label_end];
+        let after_label = &rest_after_open[label_end..];
+        let body = after_label.trim_start_matches(js::is_space);
+        let Some(close) = body.find("```") else {
+            break;
+        };
+        let inner = body[..close].trim_end_matches(js::is_space);
+        if label.eq_ignore_ascii_case("json") {
+            return inner;
+        }
+        if label.is_empty() && first_unlabelled.is_none() {
+            first_unlabelled = Some(inner);
+        }
+        let body_offset = text.len() - body.len();
+        pos = body_offset + close + 3;
+    }
+    first_unlabelled.unwrap_or(text)
 }
 
 /// Validate the model's spoken cues (`parseLocalMoments`): an object with
@@ -701,12 +721,20 @@ mod tests {
 
     #[test]
     fn fences_are_stripped_like_the_typescript_regex() {
-        assert_eq!(strip_code_fence("```json\n{\"a\":1}\n```"), "{\"a\":1}");
-        assert_eq!(strip_code_fence("  ```JSON {} ```  "), "{}");
-        assert_eq!(strip_code_fence("```\n[]\n```"), "[]");
-        assert_eq!(strip_code_fence("{}"), "{}");
-        assert_eq!(strip_code_fence("```{}"), "```{}");
-        assert_eq!(strip_code_fence("``````"), "");
+        #[derive(serde::Deserialize)]
+        struct FenceCase {
+            name: String,
+            input: String,
+            expected: String,
+        }
+        let cases: Vec<FenceCase> = serde_json::from_str(include_str!(
+            "../../../../../packages/moments/test/fixtures/code-fence-cases.json"
+        ))
+        .unwrap();
+        assert!(!cases.is_empty());
+        for c in cases {
+            assert_eq!(strip_code_fence(&c.input), c.expected, "{}", c.name);
+        }
     }
 
     #[test]
