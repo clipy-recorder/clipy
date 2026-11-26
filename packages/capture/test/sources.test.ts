@@ -1,3 +1,4 @@
+import process from "node:process";
 import { describe, expect, it } from "vitest";
 import type { Runner, RunResult } from "../src/proc.js";
 import { FAKE_FFMPEG } from "./fakeTools.js";
