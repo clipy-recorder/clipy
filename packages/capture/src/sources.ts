@@ -238,10 +238,10 @@ export async function listDshowAudio(run: Runner = realRunner, env: NodeJS.Proce
 
 export type ParsedSource = { kind: "display"; index: number } | { kind: "window"; id: number };
 
-/** "display:0" / "0" / "window:0x1a00003". */
+/** "display:0" / "0" / "window:0x1a00003". Prefixes and hex digits are read in any case. */
 export function parseSourceId(id: string | undefined): ParsedSource {
   if (id === undefined || id === "" || id === "main") return { kind: "display", index: 0 };
-  const display = /^(?:display:)?(\d+)$/.exec(id);
+  const display = /^(?:display:)?(\d+)$/i.exec(id);
   if (display) return { kind: "display", index: Number(display[1]) };
   const window = /^window:(0x[0-9a-f]+|\d+)$/i.exec(id);
   if (window) return { kind: "window", id: window[1].startsWith("0x") || window[1].startsWith("0X") ? parseInt(window[1], 16) : Number(window[1]) };
