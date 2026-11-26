@@ -235,7 +235,7 @@ running on your machine with Ollama or LM Studio.
 ## Contribute
 
 Build, test and pull request steps are in [CONTRIBUTING.md](CONTRIBUTING.md).
-Issues labelled `good first issue` are a good place to start. Report security
+Issues labeled `good first issue` are a good place to start. Report security
 problems privately, as [SECURITY.md](SECURITY.md) describes.
 
 ```bash
