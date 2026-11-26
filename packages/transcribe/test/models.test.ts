@@ -10,6 +10,7 @@ import {
   downloadModel,
   downloadVerified,
   DownloadTooLargeError,
+  formatBytes,
   LOCAL_MODELS,
   modelStatus,
   type LocalModel,
@@ -56,6 +57,16 @@ describe("LOCAL_MODELS", () => {
       expect(m.attribution).toMatch(/https:\/\//);
     }
   });
+
+
+describe("formatBytes", () => {
+  it("formats KB, MB, and GB sizes correctly", () => {
+    expect(formatBytes(0)).toBe("0 KB");
+    expect(formatBytes(999_999)).toBe("1000 KB");
+    expect(formatBytes(161_000_000)).toBe("161 MB");
+    expect(formatBytes(1_600_000_000)).toBe("1.6 GB");
+  });
+});
 
   it("uses a per-user cache folder", () => {
     expect(defaultModelDir()).toMatch(/clipy-local[\\/]models$/);
