@@ -109,6 +109,21 @@ describe("openai-compatible", () => {
     await expectSafeError(transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }), "openai-compatible", 401);
   });
 
+  it("reports a clearer 404 error without the key or the body", async () => {
+    server = await fakeServer((_req, res) => json(res, { error: { message: `missing ${KEY} ${SECRET_TEXT}` } }, 404));
+    const err = await transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as ProviderError).status).toBe(404);
+    const msg = (err as Error).message;
+    expect(msg).toContain("openai-compatible");
+    expect(msg).toContain("404");
+    expect(msg).toMatch(/endpoint or model not found/i);
+    expect(msg).toMatch(/base URL/i);
+    expect(msg).toMatch(/model name/i);
+    expect(msg).not.toContain(KEY);
+    expect(msg).not.toContain(SECRET_TEXT);
+  });
+
   it("works end to end through transcribe() from a media file", async () => {
     server = await fakeServer((_req, res) => json(res, { language: "en", segments: [{ start: 0, end: 1, text: "ok" }] }));
     const dir = tempDir();
