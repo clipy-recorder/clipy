@@ -177,6 +177,15 @@ export CLIPY_MODEL_PROVIDER=ollama          # or: lmstudio, custom
 export CLIPY_MODEL=<model you pulled>
 clipy record --local
 ```
+### Windows PowerShell
+
+If you are using Windows PowerShell, set the environment variables using:
+
+```powershell
+$env:CLIPY_MODEL_PROVIDER = "ollama"
+$env:CLIPY_MODEL = "<model you pulled>"
+
+clipy record --local
 
 Hosted providers work the same way (`openrouter`, `openai`, `gemini`, `groq`)
 with `CLIPY_MODEL_API_KEY`, or save the choice with
