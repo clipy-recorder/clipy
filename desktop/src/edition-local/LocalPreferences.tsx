@@ -1,3 +1,5 @@
+import { useLanguageChoice } from "../lib/i18n";
+import { formatBytes } from "../vendor/i18n/format";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
@@ -100,9 +102,6 @@ function keyUpdate(draft: string, replacing: boolean): KeyUpdate {
   return replacing ? { action: "clear" } : { action: "keep" };
 }
 
-function formatMegabytes(bytes: number): string {
-  return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
-}
 
 const FIELD =
   "w-full rounded-xl bg-row px-3 py-2 text-[14px] text-ink-text placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-flash-500/50";
@@ -286,11 +285,11 @@ function ModelDownload({
   status,
   progress,
   onDownload,
-}: {
-  status: LocalModelStatusDto | undefined;
+}: {  
+    status: LocalModelStatusDto | undefined;
   progress: LocalModelProgressDto | null;
   onDownload: () => void;
-}) {
+}) { const { locale } = useLanguageChoice();
   if (!status) return null;
   if (status.installed) {
     return (
@@ -311,7 +310,7 @@ function ModelDownload({
           <div className="h-full rounded-full bg-flash-500 transition-[width]" style={{ width: `${Math.round(ratio * 100)}%` }} />
         </div>
         <p className="text-[12px] text-ink-secondary">
-          {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatMegabytes(received)} of ${formatMegabytes(total)}`}
+          {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatBytes(locale, received)} of ${formatBytes(locale, total)}`}
         </p>
       </div>
     );
@@ -319,7 +318,7 @@ function ModelDownload({
   return (
     <div className="flex items-center gap-2">
       <span className="min-w-0 flex-1 text-[13px] text-ink-secondary">
-        {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatMegabytes(status.sizeBytes)}).`}
+        {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatBytes(locale, status.sizeBytes)}).`}
       </span>
       <button type="button" className={SAVE_BUTTON} onClick={onDownload}>
         Download
