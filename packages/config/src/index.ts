@@ -102,6 +102,7 @@ function readStored(path: string): StoredFile {
     if (code === "ENOENT") return {};
     throw new ConfigError(`Cannot read the config file ${path} (${code ?? "unknown error"}).`);
   }
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   if (!text.trim()) return {};
 
   let raw: unknown;
@@ -185,8 +186,8 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
     if (kind !== draft.kind) draft = { kind };
   }
   if (envBase) {
-    if (envKind && !["openai", "groq", "openai-compatible"].includes(envKind)) {
-      throw new ConfigError(`CLIPY_TRANSCRIBE_BASE_URL only applies to OpenAI-compatible transcription, not ${envKind}.`);
+    if (!["openai", "groq", "openai-compatible"].includes(draft.kind)) {
+      throw new ConfigError(`CLIPY_TRANSCRIBE_BASE_URL only applies to OpenAI-compatible transcription, not ${draft.kind}.`);
     }
     // A different endpoint never inherits the saved key. The model name is kept.
     const model = draft.model ?? defaultTranscriptionModel(draft.kind);

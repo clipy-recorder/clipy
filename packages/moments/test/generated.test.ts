@@ -14,7 +14,7 @@ describe("generated files", () => {
   });
 
   it.each(files)("%s carries the license header and no comments beyond it", (name) => {
-    const lines = readFileSync(join(generated, name), "utf8").split("\n");
+    const lines = readFileSync(join(generated, name), "utf8").replace(/\r\n/g, "\n").split("\n");
     expect(lines[0]).toBe("// SPDX-License-Identifier: Apache-2.0");
     expect(lines[1]).toMatch(/^\/\/ GENERATED from lib\//);
     // The printer puts any comment on its own line; none survive past the header.

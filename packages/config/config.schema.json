@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clipy.online/schemas/config.v1.json",
+  "title": "ClipyConfig",
+  "description": "Configuration schema for Clipy Local Edition settings file (config.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version, currently 1"
+    },
+    "model": {
+      "type": ["object", "null"],
+      "description": "Model provider that reads transcript for spoken cues; null or omitted means rules only",
+      "properties": {
+        "preset": {
+          "type": "string",
+          "enum": ["openrouter", "openai", "gemini", "groq", "ollama", "lmstudio", "custom"],
+          "description": "Which provider preset to use"
+        },
+        "apiKey": {
+          "type": "string",
+          "minLength": 1,
+          "description": "API key for hosted providers"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model identifier; required for ollama, lmstudio and custom"
+        },
+        "baseUrl": {
+          "type": "string",
+          "pattern": "^https?://",
+          "description": "Base URL override or custom endpoint"
+        }
+      },
+      "required": ["preset"],
+      "additionalProperties": false
+    },
+    "transcription": {
+      "type": "object",
+      "description": "Transcription engine configuration",
+      "oneOf": [
+        {
+          "title": "none",
+          "description": "Disable transcription",
+          "properties": {
+            "kind": { "const": "none" }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "title": "local",
+          "description": "On-device transcription via Sherpa-ONNX",
+          "properties": {
+            "kind": { "const": "local" },
+            "model": {
+              "type": "string",
+              "enum": ["english-fast", "multilingual"],
+              "description": "Local model identifier"
+            }
+          },
+          "required": ["kind"],
+          "additionalProperties": false
+        },
+        {
+          "title": "openai-or-groq",
+          "description": "OpenAI or Groq hosted speech recognition",
+          "properties": {
+            "kind": { "type": "string", "enum": ["openai", "groq"] },
+            "apiKey": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "apiKey"],
+          "additionalProperties": false
+        },
+        {
+          "title": "openai-compatible",
+          "description": "Any OpenAI-compatible transcription endpoint",
+          "properties": {
+            "kind": { "const": "openai-compatible" },
+            "baseUrl": { "type": "string", "pattern": "^https?://" },
+            "apiKey": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "baseUrl", "model"],
+          "additionalProperties": false
+        },
+        {
+          "title": "keyed-provider",
+          "description": "Hosted provider taking an API key and optional model",
+          "properties": {
+            "kind": { "type": "string", "enum": ["deepgram", "assemblyai", "elevenlabs", "gemini"] },
+            "apiKey": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 }
+          },
+          "required": ["kind", "apiKey"],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "additionalProperties": true
+}

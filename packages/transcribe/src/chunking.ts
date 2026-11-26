@@ -17,8 +17,8 @@ export interface SilenceSpan {
   endSec: number;
 }
 
-const START_RE = /silence_start:\s*(-?[0-9.]+)/;
-const END_RE = /silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/;
+const START_RE = /silence_start:\s*(-?[0-9.]+(?:[eE][-+]?[0-9]+)?)/;
+const END_RE = /silence_end:\s*([0-9.]+(?:[eE][-+]?[0-9]+)?)\s*\|\s*silence_duration:\s*([0-9.]+(?:[eE][-+]?[0-9]+)?)/;
 
 /**
  * Parse ffmpeg `silencedetect` stderr. A silence still open at the end of the
@@ -271,7 +271,29 @@ export interface TimedWord {
   text: string;
 }
 
-const SENTENCE_END = /[.!?。！？]["')\]]*$/;
+const SENTENCE_END = /[.!?…。！？]["'’”)\]}」』）]*$/;
+
+/**
+ * Scripts that do not separate words with a space: Japanese, Chinese, Thai, Khmer, Lao, Burmese.
+ * Hangul is deliberately absent — Korean spaces its words.
+ */
+const NO_SPACE_SCRIPT = /[฀-๿຀-໿က-႟ក-៿　-〿぀-ヿ㐀-䶿一-鿿豈-﫿＀-･]/;
+const CLINGS_LEFT = /^[,.!?;:…%)\]}'’”]/;
+
+function joinWords(tokens: string[], defaultJoiner: string): string {
+  if (tokens.length === 0) return "";
+  if (defaultJoiner !== " ") return tokens.join(defaultJoiner);
+  let res = tokens[0];
+  for (let i = 1; i < tokens.length; i++) {
+    const next = tokens[i];
+    if (CLINGS_LEFT.test(next) || NO_SPACE_SCRIPT.test(res.slice(-1)) || NO_SPACE_SCRIPT.test(next[0])) {
+      res += next;
+    } else {
+      res += " " + next;
+    }
+  }
+  return res;
+}
 
 /**
  * Group words into readable segments: break at a sentence end once a segment
@@ -282,10 +304,8 @@ export function groupWordsIntoSegments(words: TimedWord[], joiner = " "): Relati
   let cur: TimedWord[] = [];
   const flush = () => {
     if (cur.length === 0) return;
-    const text = cur
-      .map((w) => w.text.trim())
-      .filter(Boolean)
-      .join(joiner)
+    const tokens = cur.map((w) => w.text.trim()).filter(Boolean);
+    const text = joinWords(tokens, joiner)
       .replace(/\s+([,.!?;:])/g, "$1")
       .trim();
     if (text) segs.push({ start: cur[0].start, end: Math.max(cur[cur.length - 1].end, cur[0].start), text });

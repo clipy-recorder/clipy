@@ -26,8 +26,12 @@ pub fn model_missing_gap(model: LocalModelId) -> String {
 /// A keyed provider without a key. `message` comes from
 /// `settings::stt_config` and already says to add it in Settings.
 pub fn missing_key_gap(message: &str) -> String {
-    let message = message.trim().trim_end_matches(RETRY_HINT).trim_end();
-    let message = message.trim_end_matches(',').trim_end_matches('.');
+    let message = message.replace(['\r', '\n'], " ");
+    let mut message = message.split_whitespace().collect::<Vec<_>>().join(" ");
+    if message.ends_with(RETRY_HINT) {
+        message.truncate(message.len() - RETRY_HINT.len());
+    }
+    let message = message.trim_end_matches(|c: char| c == '.' || c == ',' || c.is_whitespace());
     format!(
         "0 ms: {message}. No transcript was made; the recorded audio is unchanged. Fix it in Settings, {RETRY_HINT}"
     )
@@ -35,15 +39,17 @@ pub fn missing_key_gap(message: &str) -> String {
 
 /// A stretch the engine or provider could not transcribe.
 pub fn gap_line(start_ms: u64, end_ms: u64, reason: &str) -> String {
-    let reason = reason.replace(['\n', '\r'], " ");
-    let reason = reason.trim().trim_end_matches('.');
+    let reason = reason.replace(['\r', '\n'], " ");
+    let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+    let reason = reason.trim_end_matches('.');
+    let end_ms = end_ms.max(start_ms);
     format!("{start_ms} ms: {reason} (until {end_ms} ms).")
 }
 
 /// Whether a transcript ended in a gap Settings can fix, so Retry should
 /// transcribe again rather than keep it.
 pub fn needs_retry(gaps: &[String]) -> bool {
-    gaps.iter().any(|g| g.ends_with(RETRY_HINT))
+    gaps.iter().any(|g| g.trim_end().ends_with(RETRY_HINT))
 }
 
 /// Segments in the app's JSON shape, inside the recording: anything starting
@@ -60,6 +66,7 @@ where
             if text.is_empty() || (duration_ms > 0 && start >= duration_ms) {
                 return None;
             }
+            let end = end.max(start);
             let end = if duration_ms > 0 {
                 end.min(duration_ms)
             } else {
@@ -102,6 +109,21 @@ mod tests {
             gap_line(1000, 2500, "Engine failed.\nagain"),
             "1000 ms: Engine failed. again (until 2500 ms)."
         );
+        // Issue #16 edge cases: CRLF, multiple whitespaces, inverted end_ms, trailing dots
+        assert_eq!(
+            gap_line(1000, 2500, "Engine failed.\r\nagain"),
+            "1000 ms: Engine failed. again (until 2500 ms)."
+        );
+        assert_eq!(
+            gap_line(3000, 1000, "reversed times..."),
+            "3000 ms: reversed times (until 3000 ms)."
+        );
+        assert_eq!(
+            missing_key_gap("Deepgram needs an API key.\r\nAdd it in Settings, then Retry.\r\n"),
+            "0 ms: Deepgram needs an API key. Add it in Settings. No transcript was made; the recorded audio is unchanged. Fix it in Settings, then Retry."
+        );
+        assert!(needs_retry(&[format!("{NOT_SET_UP_GAP}\r\n")]));
+        assert!(needs_retry(&[format!("{NOT_SET_UP_GAP}   ")]));
     }
 
     #[test]
@@ -112,6 +134,7 @@ mod tests {
                 (800, 1500, "tail".into()),
                 (1000, 1200, "after".into()),
                 (10, 20, "   ".into()),
+                (500, 200, "inverted".into()),
             ],
             1000,
         );
@@ -120,6 +143,7 @@ mod tests {
             vec![
                 json!({"startMs":0,"endMs":900,"text":"hello"}),
                 json!({"startMs":800,"endMs":1000,"text":"tail"}),
+                json!({"startMs":500,"endMs":500,"text":"inverted"}),
             ]
         );
         assert_eq!(segment_values(vec![(5, 9, "x".into())], 0).len(), 1);

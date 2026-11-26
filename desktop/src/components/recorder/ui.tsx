@@ -523,38 +523,77 @@ export function InlineSelect<T extends string>({
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const listboxRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const current = items.find((i) => i.value === value) ?? items[0];
+
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent): void {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     }
-    function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") setOpen(false);
-    }
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      triggerRef.current?.focus();
+      return;
+    }
+    if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      setOpen(true);
+      return;
+    }
+    if (open) {
+      const enabledItems = items.filter((i) => !i.disabled);
+      const currentIndex = enabledItems.findIndex((i) => i.value === value);
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = enabledItems[(currentIndex + 1) % enabledItems.length];
+        if (next) onChange(next.value);
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = enabledItems[(currentIndex - 1 + enabledItems.length) % enabledItems.length];
+        if (prev) onChange(prev.value);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        if (enabledItems[0]) onChange(enabledItems[0].value);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        if (enabledItems[enabledItems.length - 1]) onChange(enabledItems[enabledItems.length - 1].value);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+  };
+
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative" onKeyDown={handleKeyDown}>
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={ariaLabel}
         onClick={() => setOpen((o) => !o)}
-        className="flex max-w-[150px] items-center gap-1 rounded-lg px-2 py-1 text-[16px] font-semibold text-ink-text hover:bg-row"
+        className="flex max-w-[150px] items-center gap-1 rounded-lg px-2 py-1 text-[16px] font-semibold text-ink-text hover:bg-row focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500"
       >
         <span className="truncate">{current?.label ?? ""}</span>
         <Icon name="chevronDown" size={18} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div
+          ref={listboxRef}
           role="listbox"
+          aria-label={ariaLabel}
+          tabIndex={-1}
           className="absolute right-0 top-full z-40 mt-1 min-w-[180px] max-w-[260px] overflow-hidden rounded-xl bg-surface py-1 shadow-pop animate-pop-in"
         >
           {items.map((item) => (
@@ -567,8 +606,9 @@ export function InlineSelect<T extends string>({
               onClick={() => {
                 onChange(item.value);
                 setOpen(false);
+                triggerRef.current?.focus();
               }}
-              className={`block w-full truncate px-3 py-2 text-left text-[15px] ${
+              className={`block w-full truncate px-3 py-2 text-left text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-flash-500 ${
                 item.value === value ? "bg-sheet-link-soft text-sheet-link" : "text-ink-text hover:bg-row"
               } disabled:opacity-50`}
             >
