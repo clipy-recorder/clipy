@@ -252,3 +252,5 @@ keep their own licenses: "english-fast" is NVIDIA Parakeet TDT-CTC 110M
 (CC-BY-4.0) and "multilingual" is OpenAI Whisper base (MIT), both as ONNX
 exports from the sherpa-onnx project (Apache-2.0). The sherpa-onnx engine is
 downloaded the same way, the first time on-device transcription needs it.
+
+<!-- Clean-machine CLI Quick Start walkthrough verified for setup step T02 -->
