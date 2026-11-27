@@ -111,7 +111,7 @@ jobs:
         run: node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
 
   desktop-windows:
-    name: Clipy Local (Windows compile)
+    name: Clipy Local (Windows)
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -185,6 +185,21 @@ jobs:
           if (-not $line) { throw "stage-sherpa-onnx.mjs did not print SHERPA_ONNX_ARCHIVE_DIR" }
           $line | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Cargo check
+      - name: Rust tests
         working-directory: desktop/src-tauri
-        run: cargo check --locked
+        run: |
+          # Cargo runs the test executable from target/debug/deps.
+          $env:PATH = "$(Join-Path $PWD 'sherpa-bin');$env:PATH"
+          cargo test --locked --lib
+
+      - name: Local edition tests
+        working-directory: desktop/src-tauri/crates/clipy-local-edition
+        run: cargo test --locked
+
+      - name: Local moments tests
+        working-directory: desktop/src-tauri/crates/clipy-local-moments
+        run: cargo test --locked
+
+      - name: Local STT tests
+        working-directory: desktop/src-tauri/crates/clipy-local-stt
+        run: cargo test --locked --no-default-features
