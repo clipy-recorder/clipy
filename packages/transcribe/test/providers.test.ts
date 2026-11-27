@@ -380,6 +380,23 @@ describe("a failed piece of a long recording", () => {
     expect(r.gaps[0].reason).toContain("no transcript");
   });
 
+  it("does the same for an OpenAI-compatible provider", async () => {
+    let n = 0;
+    server = await fakeServer((_req, res) =>
+      ++n === 2 ? json(res, {}, 500) : json(res, { segments: [{ start: 1, end: 2, text: `part ${n}` }] }),
+    );
+    // 12 s of 16 kHz mono WAV per upload, so 30 s is sent as three pieces.
+    const r = await transcribeOpenAICompatible(
+      await audioInput(30, silences),
+      { baseUrl: server.url, apiKey: KEY, model: "whisper-1" },
+      { maxUploadBytes: 44 + 12 * 32000 },
+    );
+    expect(server.requests).toHaveLength(3);
+    expect(r.segments.map((s) => s.text)).toEqual(["part 1", "part 3"]);
+    expect(r.gaps).toHaveLength(1);
+    expect(r.gaps[0].reason).toBe("openai-compatible transcription failed (HTTP 500)");
+  });
+
   it.each([401, 403, 404, 413])("rejects at once on HTTP %i", async (status) => {
     const { result } = await run((n, res) => (n === 2 ? json(res, {}, status) : json(res, reply("ok"))));
     await expectSafeError(result, "gemini", status);
