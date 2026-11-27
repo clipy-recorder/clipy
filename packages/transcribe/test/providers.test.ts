@@ -344,6 +344,62 @@ describe("gemini", () => {
   });
 });
 
+describe("a failed piece of a long recording", () => {
+  const silences = [
+    { startSec: 9, endSec: 11 },
+    { startSec: 19, endSec: 21 },
+  ];
+  const limits = { maxSec: 12, targetSec: 10 };
+  const reply = (text: string) => ({
+    candidates: [{ content: { parts: [{ text: JSON.stringify({ segments: [{ start: 1, end: 2, text }] }) }] } }],
+  });
+
+  /** Three pieces; `answer` decides what the server does for request number `n`. */
+  async function run(answer: (n: number, res: Parameters<typeof json>[0]) => void, signal?: AbortSignal) {
+    let n = 0;
+    server = await fakeServer((_req, res) => answer(++n, res));
+    const input = { ...(await audioInput(30, silences)), signal };
+    const result = transcribeGemini(input, { apiKey: KEY, baseUrl: server.url }, limits);
+    return { result, input };
+  }
+
+  it("records a gap for the failed piece and keeps the others", async () => {
+    const { result, input } = await run((n, res) => (n === 2 ? json(res, { error: SECRET_TEXT }, 500) : json(res, reply(`part ${n}`))));
+    const r = await result;
+    expect(server!.requests).toHaveLength(3);
+    expect(r.segments.map((s) => s.text)).toEqual(["part 1", "part 3"]);
+    expect(r.gaps).toEqual([{ startMs: 10000, endMs: 20000, reason: "gemini transcription failed (HTTP 500)" }]);
+    expect(input.progress.at(-1)).toBe(1);
+  });
+
+  it("does the same for an answer in the wrong format", async () => {
+    const { result } = await run((n, res) => (n === 2 ? json(res, { candidates: [] }) : json(res, reply(`part ${n}`))));
+    const r = await result;
+    expect(r.segments).toHaveLength(2);
+    expect(r.gaps).toHaveLength(1);
+    expect(r.gaps[0].reason).toContain("no transcript");
+  });
+
+  it.each([401, 403, 404, 413])("rejects at once on HTTP %i", async (status) => {
+    const { result } = await run((n, res) => (n === 2 ? json(res, {}, status) : json(res, reply("ok"))));
+    await expectSafeError(result, "gemini", status);
+    expect(server!.requests).toHaveLength(2);
+  });
+
+  it("rejects with the first error when every piece fails", async () => {
+    const { result } = await run((n, res) => json(res, {}, n === 1 ? 500 : 502));
+    await expectSafeError(result, "gemini", 500);
+    expect(server!.requests).toHaveLength(3);
+  });
+
+  it("rejects with AbortError when cancelled mid-way", async () => {
+    const ac = new AbortController();
+    const { result } = await run((n, res) => (n === 2 ? ac.abort() : json(res, reply("ok"))), ac.signal);
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    expect(server!.requests).toHaveLength(2);
+  });
+});
+
 describe("network failures", () => {
   it("names the provider when it cannot be reached", async () => {
     const closed = await fakeServer(() => undefined);

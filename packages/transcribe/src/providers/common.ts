@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { BYTES_PER_SECOND, detectSilences, measureMeanVolume, readWavSlice, silenceThresholds, throwIfAborted, type WavInfo } from "../audio.js";
 import { mergePieces, planChunks, speechSecIn, trimToSpeech, type ChunkPlan, type RelativeSegment, type SilenceSpan } from "../chunking.js";
+import { ProviderError } from "./http.js";
 import type { TranscriptGap, TranscriptSegment } from "../types.js";
 
 /** What every engine is handed: the extracted 16 kHz mono WAV and a way to find its silences. */
@@ -106,10 +107,23 @@ export function pieceGap(p: ChunkPlan, reason: string): TranscriptGap {
   return { startMs: Math.round(start * 1000), endMs: Math.round(end * 1000), reason };
 }
 
+/** Statuses that mean the key, address or upload size is wrong, so the other pieces would fail too. */
+const FATAL_STATUSES = new Set([401, 403, 404, 413]);
+
+/** Whether a failed piece can become a gap while the other pieces carry on. */
+function isPieceFailure(err: unknown): err is ProviderError {
+  return err instanceof ProviderError && !(err.status !== undefined && FATAL_STATUSES.has(err.status));
+}
+
 /**
  * Send the audio to a provider in pieces small enough for its upload limit,
  * cut in silences, one piece at a time, and merge the results. A piece with
  * no speech at all is not sent and is reported as a gap.
+ *
+ * A piece the provider fails on is also reported as a gap, with the provider
+ * error as its reason, and the rest are still sent. Cancelling, a wrong
+ * setting (see FATAL_STATUSES) or an error that is not from the provider
+ * rejects at once. If every piece sent fails, the first error is thrown.
  */
 export async function runInPieces(
   input: AudioInput,
@@ -123,6 +137,7 @@ export async function runInPieces(
   const pieces: Array<{ plan: (typeof plan)[number]; segments: RelativeSegment[] }> = [];
   const gaps: TranscriptGap[] = [];
   let language: string | undefined;
+  let firstFailure: ProviderError | undefined;
   for (const [i, p] of plan.entries()) {
     throwIfAborted(input.signal);
     if (skip.has(p.index)) {
@@ -132,11 +147,20 @@ export async function runInPieces(
     }
     const wav =
       plan.length === 1 ? await readFile(input.wavPath) : await readWavSlice(input.wavPath, input.info, p.extractStartSec, p.extractDurSec);
-    const out = await run(wav, p.extractDurSec);
-    language ??= out.language;
-    pieces.push({ plan: p, segments: out.segments });
+    try {
+      const out = await run(wav, p.extractDurSec);
+      language ??= out.language;
+      pieces.push({ plan: p, segments: out.segments });
+    } catch (err) {
+      // A cancel can surface as any error, so the signal is checked first.
+      throwIfAborted(input.signal);
+      if (!isPieceFailure(err)) throw err;
+      firstFailure ??= err;
+      gaps.push(pieceGap(p, err.message));
+    }
     input.onProgress?.((i + 1) / plan.length);
   }
+  if (firstFailure && pieces.length === 0) throw firstFailure;
   return { segments: mergePieces(pieces), language, gaps };
 }
 
