@@ -151,3 +151,14 @@ export function wholePieceSegment(text: string, durSec: number, silences: Silenc
 export function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+
+/** Map uploaded bytes to [0, maxFraction] for whole-file providers. */
+export function uploadProgress(
+  onProgress: ((fraction: number) => void) | undefined,
+  maxFraction: number,
+): ((sentBytes: number, totalBytes: number) => void) | undefined {
+  if (!onProgress) return undefined;
+  return (sent, total) => {
+    if (total > 0) onProgress(maxFraction * Math.min(1, sent / total));
+  };
+}

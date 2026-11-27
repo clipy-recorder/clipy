@@ -50,6 +50,12 @@ export interface RequestTiming {
   answerWaitMs?: number;
 }
 
+export type UploadProgress = (sentBytes: number, totalBytes: number) => void;
+
+export interface RequestOptions extends RequestTiming {
+  onUploadProgress?: UploadProgress;
+}
+
 /** Upload slice: progress is counted per slice handed to the connection. */
 const UPLOAD_SLICE = 64 * 1024;
 
@@ -72,9 +78,10 @@ async function bodyBytes(url: string, init: RequestInit): Promise<{ bytes: Uint8
   return { bytes: new Uint8Array(await r.arrayBuffer()), contentType: r.headers.get("content-type") };
 }
 
-async function send(provider: string, url: string, init: RequestInit, signal: AbortSignal | undefined, timing: RequestTiming): Promise<Sent> {
-  const idleMs = timing.idleMs ?? PROVIDER_IDLE_TIMEOUT_MS;
-  const answerWaitMs = timing.answerWaitMs ?? PROVIDER_ANSWER_WAIT_MS;
+async function send(provider: string, url: string, init: RequestInit, signal: AbortSignal | undefined, options: RequestOptions): Promise<Sent> {
+  const idleMs = options.idleMs ?? PROVIDER_IDLE_TIMEOUT_MS;
+  const answerWaitMs = options.answerWaitMs ?? PROVIDER_ANSWER_WAIT_MS;
+  const onUploadProgress = options.onUploadProgress;
   const clock = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let waiting = false;
@@ -107,15 +114,18 @@ async function send(provider: string, url: string, init: RequestInit, signal: Ab
       if (body.contentType && !headers.has("content-type")) headers.set("content-type", body.contentType);
       headers.set("content-length", String(body.bytes.byteLength));
       let offset = 0;
+      const total = body.bytes.byteLength;
       const stream = new ReadableStream<Uint8Array>({
         pull(controller) {
-          if (offset >= body.bytes.byteLength) {
+          if (offset >= total) {
             arm(answerWaitMs, true);
             return controller.close();
           }
           bump();
-          controller.enqueue(body.bytes.subarray(offset, offset + UPLOAD_SLICE));
-          offset += UPLOAD_SLICE;
+          const next = Math.min(offset + UPLOAD_SLICE, total);
+          controller.enqueue(body.bytes.subarray(offset, next));
+          offset = next;
+          if (total > 0) onUploadProgress?.(offset, total);
         },
       });
       finalInit = { ...finalInit, headers, body: stream, duplex: "half" };
@@ -143,11 +153,11 @@ async function send(provider: string, url: string, init: RequestInit, signal: Ab
  * fetch that turns network failures and non-2xx answers into a ProviderError.
  * Redirects are refused: requests carry the user's key in headers
  * (xi-api-key, x-goog-api-key, Authorization), and a redirect must not take
- * it to another host. Times out per `timing` until the answer starts; the
+ * it to another host. Times out per `options` until the answer starts; the
  * caller owns reading the body.
  */
-export async function request(provider: string, url: string, init: RequestInit, signal?: AbortSignal, timing: RequestTiming = {}): Promise<Response> {
-  const sent = await send(provider, url, init, signal, timing);
+export async function request(provider: string, url: string, init: RequestInit, signal?: AbortSignal, options: RequestOptions = {}): Promise<Response> {
+  const sent = await send(provider, url, init, signal, options);
   sent.done();
   return sent.res;
 }
@@ -187,9 +197,9 @@ export async function requestJson<T = unknown>(
   init: RequestInit,
   signal?: AbortSignal,
   maxBytes: number = MAX_RESPONSE_BYTES,
-  timing: RequestTiming = {},
+  options: RequestOptions = {},
 ): Promise<T> {
-  const { res, timeoutError, bump, done } = await send(provider, url, init, signal, timing);
+  const { res, timeoutError, bump, done } = await send(provider, url, init, signal, options);
   let text: string;
   try {
     text = await readCappedText(
