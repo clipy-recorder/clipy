@@ -54,6 +54,13 @@ Claude asks before downloading it. It is a one-time setup:
 clipy models download english-fast   # about 104 MB
 clipy speech install                 # about 35 MB
 ```
+On Windows, if you are using the CLI through `npx` instead of installing it
+globally, run these commands in Command Prompt:
+
+```cmd
+npx -y @clipy/cli@latest models download english-fast
+npx -y @clipy/cli@latest speech install
+```
 
 ## Privacy
 
