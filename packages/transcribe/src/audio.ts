@@ -82,6 +82,27 @@ export class NoAudioTrackError extends Error {
   }
 }
 
+/**
+ * Why ffmpeg could not read a local input, or null when the cause is unknown.
+ * The file system answers whether the path exists, is a folder or can be
+ * opened: ffmpeg's wording for those differs by OS (on Windows a folder is
+ * "Permission denied"), and a denied write to the output would read the same.
+ * Only "not media" comes from ffmpeg. Never quotes ffmpeg's output.
+ */
+async function unreadableInput(inputPath: string, stderr: string): Promise<string | null> {
+  try {
+    if ((await stat(inputPath)).isDirectory()) return `${inputPath} is a folder`;
+    await (await open(inputPath, "r")).close();
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return `${inputPath} does not exist`;
+    if (code === "EACCES" || code === "EPERM") return `${inputPath} cannot be opened: permission denied`;
+    return null;
+  }
+  if (/Invalid data found when processing input/i.test(stderr)) return `${inputPath} is not a video or audio file`;
+  return null;
+}
+
 const DURATION_RE = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 
 /**
@@ -95,8 +116,8 @@ export async function probeMedia(inputPath: string, signal?: AbortSignal): Promi
   const hasAudio = /Stream #\d+:\d+[^\n]*: Audio:/.test(header.stderr);
   const m = DURATION_RE.exec(header.stderr);
   if (m) return { durationSec: Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]), hasAudio };
-  if (/No such file|Invalid data found|Permission denied|Error opening input/i.test(header.stderr)) {
-    throw new Error(`ffmpeg could not read ${inputPath}`);
+  if (/No such file|Invalid data found|Permission denied|Is a directory|Error opening input/i.test(header.stderr)) {
+    throw new Error((await unreadableInput(inputPath, header.stderr)) ?? `ffmpeg could not read ${inputPath}`);
   }
   const decode = await runFfmpeg(
     ["-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:2", "-i", ffmpegInput(inputPath), "-map", "0", "-c", "copy", "-f", "null", "-"],
@@ -134,7 +155,7 @@ export async function extractAudio(inputPath: string, outWavPath: string, signal
   );
   if (code !== 0) {
     if (/does not contain any stream|Output file #0 does not contain|matches no streams/i.test(stderr)) throw new NoAudioTrackError(inputPath);
-    throw new Error(`ffmpeg could not read the audio in ${inputPath} (exit ${code})`);
+    throw new Error((await unreadableInput(inputPath, stderr)) ?? `ffmpeg could not read the audio in ${inputPath} (exit ${code})`);
   }
 }
 

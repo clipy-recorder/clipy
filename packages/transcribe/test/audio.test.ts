@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { chmodSync, copyFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -97,5 +97,41 @@ describe("transcribe with transcription off", () => {
     expect(r.gaps[0].endMs).toBeGreaterThan(2900);
     expect(stages).toContain("extract");
     expect(readdirSync(scratch)).toEqual([]);
+  });
+});
+
+describe("an input ffmpeg cannot read", () => {
+  // `none` fails while probing the length; a hosted kind fails while extracting
+  // the audio, before any request (nothing listens on port 9).
+  const kinds = [
+    ["transcription off", { kind: "none" }],
+    ["a hosted kind", { kind: "openai-compatible", baseUrl: "http://127.0.0.1:9", apiKey: "k", model: "m" }],
+  ] as const;
+
+  describe.each(kinds)("with %s", (_label, config) => {
+    it("says when the file does not exist", async () => {
+      const missing = join(dir, "missing.mp4");
+      await expect(transcribe(missing, config)).rejects.toThrow(`${missing} does not exist`);
+    });
+
+    it("says when the file is not a video or audio file", async () => {
+      const text = join(dir, "notes.txt");
+      writeFileSync(text, "just some text\n");
+      await expect(transcribe(text, config)).rejects.toThrow(`${text} is not a video or audio file`);
+    });
+
+    // On Windows ffmpeg reports a folder as "Permission denied", not "Is a directory".
+    it("says when the path is a folder", async () => {
+      const folder = tempDir();
+      await expect(transcribe(folder, config)).rejects.toThrow(`${folder} is a folder`);
+    });
+
+    // Windows ignores the mode bits and root reads anything, so only a POSIX user can check this.
+    it.skipIf(process.platform === "win32" || process.getuid?.() === 0)("says when the file cannot be opened", async () => {
+      const locked = join(tempDir(), "locked.mp4");
+      copyFileSync(video, locked);
+      chmodSync(locked, 0o000);
+      await expect(transcribe(locked, config)).rejects.toThrow(`${locked} cannot be opened: permission denied`);
+    });
   });
 });
