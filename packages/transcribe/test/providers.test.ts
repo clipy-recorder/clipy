@@ -7,7 +7,7 @@ import { transcribe } from "../src/index.js";
 import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
-import { transcribeGemini } from "../src/providers/gemini.js";
+import { GeminiTranscript, transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
@@ -341,6 +341,34 @@ describe("gemini", () => {
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { error: { message: SECRET_TEXT } }, 400));
     await expectSafeError(transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "gemini", 400);
+  });
+
+  describe("GeminiTranscript time parsing", () => {
+    const seg = (start: unknown, end: unknown = 2) => ({ segments: [{ start, end, text: "x" }] });
+
+    it("accepts the documented forms", () => {
+      for (const s of [12, "12", "12.5s", "1:02.5", "01:00:00", " 3 "]) {
+        expect(GeminiTranscript.safeParse(seg(s, 100)).success).toBe(true);
+      }
+    });
+
+    it("rejects a blank time string, matching the Rust port", () => {
+      for (const s of ["", " ", "s", " s "]) {
+        expect(GeminiTranscript.safeParse(seg(s)).success).toBe(false);
+      }
+    });
+
+    it("rejects a colon-separated time with any empty part", () => {
+      for (const s of ["1:", ":30", " : ", "1::5", "::"]) {
+        expect(GeminiTranscript.safeParse(seg(s)).success).toBe(false);
+      }
+    });
+
+    it("still rejects more than three parts and non-numeric parts", () => {
+      for (const s of ["1:2:3:4", "1:bad:3", "abc"]) {
+        expect(GeminiTranscript.safeParse(seg(s)).success).toBe(false);
+      }
+    });
   });
 });
 
