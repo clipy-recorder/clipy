@@ -21,6 +21,50 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  # Decides whether the desktop jobs need to run. They take up to an hour on
+  # macOS and Windows, and desktop/ does not depend on packages/, so a pull
+  # request that touches only packages/, docs or plugins skips them. They still
+  # run for anything under desktop/, for a change to this workflow, on every
+  # push to main and on a manual run. Skipping happens per job (with `if:`)
+  # rather than with a workflow-level `paths:` filter, so the packages job
+  # always runs and the skipped jobs report as skipped instead of leaving a
+  # required check waiting forever.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # The SHAs reach the script through env, never through ${{ }} inside
+      # it. If the diff cannot be computed, the desktop jobs run (fail open).
+      - name: Check which paths changed
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          desktop=true
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA"); then
+              echo "Changed files:"
+              printf '%s\n' "$changed"
+              if ! printf '%s\n' "$changed" | grep -qE '^(desktop/|\.github/workflows/ci\.yml$)'; then
+                desktop=false
+              fi
+            else
+              echo "Could not diff $BASE_SHA...$HEAD_SHA; running the desktop jobs."
+            fi
+          fi
+          echo "desktop=$desktop"
+          echo "desktop=$desktop" >> "$GITHUB_OUTPUT"
+
   packages:
     name: Packages (Linux)
     runs-on: ubuntu-24.04
@@ -51,6 +95,8 @@ jobs:
 
   desktop-macos:
     name: Clipy Local (macOS)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: macos-15
     timeout-minutes: 60
     defaults:
@@ -112,6 +158,8 @@ jobs:
 
   desktop-windows:
     name: Clipy Local (Windows compile)
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
