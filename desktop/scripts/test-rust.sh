@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "test-rust.sh is macOS-only. See desktop/README.md for Linux and Windows test instructions." >&2
+  exit 1
+fi
+
 DESKTOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAURI_DIR="$DESKTOP_DIR/src-tauri"
 FFMPEG_LIB_DIR="$TAURI_DIR/target/native-deps/Spacedrive.framework/Libraries"

@@ -85,25 +85,73 @@ Clipy uses, so both pick moments the same way. Propose changes to it in a
 pull request as usual; a maintainer applies the change at its source so the
 next sync keeps it.
 
+
 ## Desktop app
 
-You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
-the Command Line Tools. On Windows, Visual Studio Build Tools with the C++
-workload and a shared FFmpeg 7 build with `FFMPEG_DIR` pointing at it. Full
-build notes are in [desktop/README.md](desktop/README.md).
+You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, install Xcode or the Command Line Tools. On Windows, install Visual Studio Build Tools with the C++ workload and a shared FFmpeg 7 build, with `FFMPEG_DIR` pointing at it. Full build notes are in [desktop/README.md](desktop/README.md).
+
+### macOS
+
+From the repository root:
 
 ```bash
 cd desktop
 pnpm install --frozen-lockfile
 pnpm tauri:icon
-pnpm setup:native-deps            # macOS: downloads the FFmpeg framework
+pnpm setup:native-deps
 pnpm exec tsc --noEmit
 bash scripts/test-rust.sh --locked --lib
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
-pnpm tauri:dev                    # run the desktop app
+pnpm tauri:dev
 ```
 
-The crates in `desktop/src-tauri/crates/` have their own `cargo test`.
+`pnpm setup:native-deps` downloads the native FFmpeg framework. The `test-rust.sh` script requires this macOS framework and is macOS-only. Do not run it on Linux or Windows.
+
+### Local Rust crate tests (Linux and macOS)
+
+These three commands are also run by CI on macOS. They can also be run on Linux:
+
+```bash
+cd desktop/src-tauri/crates/clipy-local-edition
+cargo test --locked
+
+cd ../clipy-local-moments
+cargo test --locked
+
+cd ../clipy-local-stt
+cargo test --locked --no-default-features
+```
+
+The STT crate uses `--no-default-features` to avoid building its default sherpa-onnx engine.
+
+### Windows
+
+The current Windows CI job builds the desktop app and runs a Rust compile check; it does not run the desktop Rust tests.
+
+From the `desktop` directory, after installing dependencies and configuring `FFMPEG_DIR`:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm tauri:icon
+pnpm run build
+node scripts/stage-ffmpeg-dlls.mjs
+node scripts/stage-segmentation-assets.mjs
+```
+
+Stage the pinned sherpa-onnx dependency:
+
+```powershell
+$line = node scripts/stage-sherpa-onnx.mjs | Where-Object { $_ -like 'SHERPA_ONNX_ARCHIVE_DIR=*' }
+if (-not $line) { throw "stage-sherpa-onnx.mjs did not print SHERPA_ONNX_ARCHIVE_DIR" }
+$line | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+```
+
+Then run the Rust compile check from `desktop/src-tauri`:
+
+```powershell
+cargo check --locked
+```
+
 
 ## Pull requests
 
