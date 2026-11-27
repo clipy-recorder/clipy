@@ -3,7 +3,7 @@ name: record
 description: Record the user's screen with Clipy so they can show you something instead of typing it, then read the recording and act on it. Use when the user runs /record, says "let me show you", "record my screen", "I'll record it", or shares the path to a recording.arec file.
 argument-hint: "[what to do with the recording] | stop | cancel | <path to recording.arec>"
 tags: [screen-recording, record, video, transcript, arec, claude-code]
-allowed-tools: Read, Bash(command -v clipy), Bash(clipy --version), Bash(clipy session start *), Bash(clipy session stop *), Bash(clipy session abort*), Bash(clipy session status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.21.0 session start *), Bash(npx -y @clipy/cli@0.21.0 session stop *), Bash(npx -y @clipy/cli@0.21.0 session abort*), Bash(npx -y @clipy/cli@0.21.0 session status*), Bash(npx -y @clipy/cli@0.21.0 doctor*)
+allowed-tools: Read, Bash(command -v clipy), Bash(clipy --version), Bash(clipy sources --local --source mac-screen --json), Bash(lsappinfo find *), Bash(npx -y @clipy/cli@0.21.0 sources --local --source mac-screen --json), Bash(clipy session start *), Bash(clipy session stop *), Bash(clipy session abort*), Bash(clipy session status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.21.0 session start *), Bash(npx -y @clipy/cli@0.21.0 session stop *), Bash(npx -y @clipy/cli@0.21.0 session abort*), Bash(npx -y @clipy/cli@0.21.0 session status*), Bash(npx -y @clipy/cli@0.21.0 doctor*)
 ---
 
 # Record the screen
@@ -47,6 +47,14 @@ without asking.
 ```bash
 clipy session start --local --source mac-screen --mic --max 600 --title "<a short title for what the user is showing>" --json
 ```
+
+On a Mac with more than one screen, record the screen Claude Code is on, not
+the primary one: run `lsappinfo find bundleid=$__CFBundleIdentifier` (it prints
+the app running Claude Code, as `ASN:…-"Claude":`) and
+`clipy sources --local --source mac-screen --json` (the same app the recording uses),
+take that app's largest window, find the display that holds its centre, and add
+`--display <that display's id>` to the command. With one screen, or when it is
+not clear, leave `--display` out.
 
 - `--local` keeps the recording on this computer: the video and the
   screenshots never leave it (on a Mac, the audio does not either). Never drop `--local`, and never upload the

@@ -1,7 +1,7 @@
 {
   "name": "record",
   "displayName": "Record",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Show Claude Code instead of typing it out. /record starts a Clipy screen recording on your Mac or Windows PC; talk through what you want, say stop, and Claude reads the recording as an AREC file (transcript, key moments and a screenshot of each) and gets to work. The video stays on your computer.",
   "author": {
     "name": "Clipy",

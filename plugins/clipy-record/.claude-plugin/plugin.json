@@ -1,7 +1,7 @@
 {
   "name": "clipy-record",
   "displayName": "Record with Clipy",
-  "version": "0.4.1",
+  "version": "0.6.2",
   "description": "A Record button above the prompt: show Claude your screen and talk it through, press stop, and Claude reads the recording (transcript, key moments, screenshots) and gets to work.",
   "author": {
     "name": "Clipy",
