@@ -16,16 +16,22 @@ export type LocalModelId = "english-fast" | "multilingual";
  * regional endpoint, a proxy or a test server.
  */
 export type TranscriptionConfig =
-  | { kind: "none" }
-  | { kind: "local"; model: LocalModelId }
-  | { kind: "openai-compatible"; baseUrl: string; apiKey: string; model: string }
+  | { kind: "none"; language?: string }
+  | { kind: "local"; model: LocalModelId; language?: string }
+  | {
+      kind: "openai-compatible";
+      baseUrl: string;
+      apiKey: string;
+      model: string;
+      language?: string;
+    }
   | {
       kind: "deepgram" | "assemblyai" | "elevenlabs" | "gemini";
       apiKey: string;
       model?: string;
       baseUrl?: string;
+      language?: string;
     };
-
 export interface TranscriptGap {
   startMs: number;
   endMs: number;

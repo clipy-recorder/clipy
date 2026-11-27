@@ -29,17 +29,21 @@ const Answer = z.object({
 
 export async function transcribeDeepgram(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
-): Promise<EngineOutput> {
+  config: { apiKey: string; model?: string; baseUrl?: string; language?: string },): Promise<EngineOutput> {
   const provider = "deepgram";
   const model = config.model || DEEPGRAM_DEFAULT_MODEL;
   const params = new URLSearchParams({
-    model,
-    smart_format: "true",
-    punctuate: "true",
-    utterances: "true",
-    detect_language: "true",
-  });
+  model,
+  smart_format: "true",
+  punctuate: "true",
+  utterances: "true",
+});
+
+if (config.language) {
+  params.set("language", config.language);
+} else {
+  params.set("detect_language", "true");
+}
   const url = `${joinUrl(config.baseUrl || DEEPGRAM_BASE_URL, "v1/listen")}?${params}`;
   const audio = await readFile(input.wavPath);
   const raw = await requestJson(

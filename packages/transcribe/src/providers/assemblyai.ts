@@ -26,7 +26,7 @@ export interface AssemblyAILimits {
 
 export async function transcribeAssemblyAI(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
+  config: { apiKey: string; model?: string; baseUrl?: string; language?: string },
   limits: AssemblyAILimits = {},
 ): Promise<EngineOutput> {
   const provider = "assemblyai";
@@ -47,8 +47,14 @@ export async function transcribeAssemblyAI(
   if (!up.success) throw new ProviderError(provider, 200, "upload answer had no upload_url");
   input.onProgress?.(0.2);
 
-  const body: Record<string, unknown> = { audio_url: up.data.upload_url, language_detection: true };
-  if (config.model) body.speech_models = [config.model];
+  const body: Record<string, unknown> = { audio_url: up.data.upload_url };
+
+if (config.language) {
+  body.language_code = config.language;
+} else {
+  body.language_detection = true;
+}
+if (config.model) body.speech_models = [config.model];
   const created = Job.safeParse(
     await requestJson(
       provider,

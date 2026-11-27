@@ -134,6 +134,30 @@ describe("env vars override the file", () => {
     expect(config.model).toEqual({ baseUrl: "https://api.openai.com/v1", apiKey: "sk-file", model: "gpt-file" });
     expect(config.transcription).toEqual({ kind: "deepgram", apiKey: "dg-file" });
   });
+  it("saves the transcription language and lets the env var override it", () => {
+  saveConfig(
+    {
+      transcription: {
+        kind: "deepgram",
+        apiKey: "dg-file",
+        language: "hi",
+      },
+    },
+    env,
+  );
+
+  expect(loadConfig(env).transcription).toMatchObject({
+    kind: "deepgram",
+    language: "hi",
+  });
+
+  expect(
+    loadConfig({ ...env, CLIPY_TRANSCRIBE_LANGUAGE: "en" }).transcription,
+  ).toMatchObject({
+    kind: "deepgram",
+    language: "en",
+  });
+});
 
   it("overrides single fields for the same provider", () => {
     const config = loadConfig({ ...env, CLIPY_MODEL: "gpt-env", CLIPY_MODEL_API_KEY: "sk-env", CLIPY_TRANSCRIBE_MODEL: "nova-3" });
@@ -144,6 +168,13 @@ describe("env vars override the file", () => {
   it("ignores empty env vars", () => {
     expect(loadConfig({ ...env, CLIPY_MODEL: "", CLIPY_MODEL_PROVIDER: "  " }).model?.model).toBe("gpt-file");
   });
+  it("rejects an invalid language in the env var", () => {
+  const error = errorOf(() =>
+    loadConfig({ ...env, CLIPY_TRANSCRIBE_LANGUAGE: "hindi" }),
+  );
+
+  expect(error.message).toMatch(/CLIPY_TRANSCRIBE_LANGUAGE|transcription.language/);
+});
 
   it("never sends the saved key to another provider", () => {
     expect(errorOf(() => loadConfig({ ...env, CLIPY_MODEL_PROVIDER: "groq" })).message).toMatch(/Groq needs an API key/);
@@ -278,6 +309,18 @@ describe("a malformed file", () => {
     expect(error.message).not.toContain("sk-secret-123");
     expect(error.stack ?? "").not.toContain("sk-secret-123");
   });
+  it("rejects an unknown two-letter language code", () => {
+  writeConfig({
+    transcription: {
+      kind: "deepgram",
+      apiKey: "dg-file",
+      language: "zz",
+    },
+  });
+
+  const error = errorOf(() => loadConfig(env));
+  expect(error.message).toContain('"transcription.language"');
+});
 
   it("names the bad field", () => {
     writeConfig({ model: { preset: "anthropic", apiKey: "sk-secret-123" } });
@@ -296,6 +339,18 @@ describe("a malformed file", () => {
     writeConfig({ transcription: { kind: "whisper" } });
     expect(errorOf(() => loadConfig(env)).message).toMatch(/"transcription.kind": must be one of none, local/);
   });
+  it("rejects an invalid transcription language", () => {
+  writeConfig({
+    transcription: {
+      kind: "deepgram",
+      apiKey: "dg-file",
+      language: "hindi",
+    },
+  });
+
+  const error = errorOf(() => loadConfig(env));
+  expect(error.message).toContain('"transcription.language"');
+});
 
   it("says the file must hold an object", () => {
     writeConfig("[1, 2]");

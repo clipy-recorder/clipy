@@ -37,12 +37,11 @@ export interface StoredModel {
  * their OpenAI-compatible endpoints and default models.
  */
 export type StoredTranscription =
-  | { kind: "none" }
-  | { kind: "local"; model?: LocalTranscriptionModel }
-  | { kind: "openai" | "groq"; apiKey: string; model?: string }
-  | { kind: "openai-compatible"; baseUrl: string; apiKey?: string; model: string }
-  | { kind: (typeof KEYED_TRANSCRIPTION_KINDS)[number]; apiKey: string; model?: string };
-
+  | { kind: "none"; language?: string }
+  | { kind: "local"; model?: LocalTranscriptionModel; language?: string }
+  | { kind: "openai" | "groq"; apiKey: string; model?: string; language?: string }
+  | { kind: "openai-compatible"; baseUrl: string; apiKey?: string; model: string; language?: string }
+  | { kind: (typeof KEYED_TRANSCRIPTION_KINDS)[number]; apiKey: string; model?: string; language?: string };
 /**
  * The settings file (`config.json`, mode 0600). Every field is optional; a
  * missing file means all defaults. Example:
@@ -82,7 +81,23 @@ export function isHttpUrl(value: string): boolean {
 }
 
 const nonEmpty = z.string().trim().min(1, "must not be empty");
-const httpUrl = z.string().trim().refine(isHttpUrl, HTTP_URL_MESSAGE);
+const ISO_639_1_CODES = new Set(
+  `aa ab ae af ak am an ar as av ay az ba be bg bh bi bm bn bo br bs
+  ca ce ch co cr cs cu cv cy da de dv dz ee el en eo es et eu fa ff fi
+  fj fo fr fy ga gd gl gn gu gv ha he hi ho hr ht hu hy hz ia id ie ig
+  ii ik io is it iu ja jv ka kg ki kj kk kl km kn ko kr ks ku kv kw ky
+  la lb lg li ln lo lt lu lv mg mh mi mk ml mn mr ms mt my na nb nd ne
+  ng nl nn no nr nv ny oc oj om or os pa pi pl ps pt qu rm rn ro ru rw
+  sa sc sd se sg si sk sl sm sn so sq sr ss st su sv sw ta te tg th ti
+  tk tl tn to tr ts tt tw ty ug uk ur uz ve vi vo wa wo xh yi yo za zh zu`
+    .split(/\s+/)
+    .filter(Boolean),
+);
+
+const languageCode = z.string().refine(
+  (value) => ISO_639_1_CODES.has(value),
+  "must be a valid two-letter ISO 639-1 language code",
+);const httpUrl = z.string().trim().refine(isHttpUrl, HTTP_URL_MESSAGE);
 
 const storedModelSchema = z.strictObject({
   preset: z.enum(MODEL_PRESETS),
@@ -92,11 +107,11 @@ const storedModelSchema = z.strictObject({
 });
 
 const storedTranscriptionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("none") }),
-  z.strictObject({ kind: z.literal("local"), model: z.enum(LOCAL_TRANSCRIPTION_MODELS).optional() }),
-  z.strictObject({ kind: z.enum(["openai", "groq"]), apiKey: nonEmpty, model: nonEmpty.optional() }),
-  z.strictObject({ kind: z.literal("openai-compatible"), baseUrl: httpUrl, apiKey: nonEmpty.optional(), model: nonEmpty }),
-  z.strictObject({ kind: z.enum(KEYED_TRANSCRIPTION_KINDS), apiKey: nonEmpty, model: nonEmpty.optional() }),
+  z.strictObject({ kind: z.literal("none"), language: languageCode.optional() }),
+  z.strictObject({ kind: z.literal("local"), model: z.enum(LOCAL_TRANSCRIPTION_MODELS).optional(), language: languageCode.optional() }),
+  z.strictObject({ kind: z.enum(["openai", "groq"]), apiKey: nonEmpty, model: nonEmpty.optional(), language: languageCode.optional() }),
+  z.strictObject({ kind: z.literal("openai-compatible"), baseUrl: httpUrl, apiKey: nonEmpty.optional(), model: nonEmpty, language: languageCode.optional() }),
+  z.strictObject({ kind: z.enum(KEYED_TRANSCRIPTION_KINDS), apiKey: nonEmpty, model: nonEmpty.optional(), language: languageCode.optional() }),
 ]);
 
 export const storedConfigSchema = z.looseObject({
