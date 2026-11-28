@@ -61,16 +61,26 @@ export async function transcribeAssemblyAI(
 
   const started = Date.now();
   let job = created.data;
-  while (job.status !== "completed") {
-    if (job.status === "error") throw new ProviderError(provider, undefined, "the provider reported an error for this audio");
-    if (Date.now() - started > timeoutMs) throw new ProviderError(provider, undefined, "timed out waiting for the transcript");
-    await sleep(pollMs, input.signal);
-    const next = Job.safeParse(
-      await requestJson(provider, joinUrl(base, `v2/transcript/${encodeURIComponent(job.id)}`), { headers: auth }, input.signal),
-    );
-    if (!next.success) throw new ProviderError(provider, 200, "unexpected answer shape");
-    job = next.data;
-    input.onProgress?.(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
+  const deadline = new AbortController();
+  const timeoutError = new ProviderError(provider, undefined, "timed out waiting for the transcript");
+  const pollSignal = input.signal ? AbortSignal.any([input.signal, deadline.signal]) : deadline.signal;
+  const timer = setTimeout(() => deadline.abort(timeoutError), timeoutMs);
+  try {
+    while (job.status !== "completed") {
+      if (job.status === "error") throw new ProviderError(provider, undefined, "the provider reported an error for this audio");
+      await sleep(pollMs, pollSignal);
+      const next = Job.safeParse(
+        await requestJson(provider, joinUrl(base, `v2/transcript/${encodeURIComponent(job.id)}`), { headers: auth }, pollSignal),
+      );
+      if (!next.success) throw new ProviderError(provider, 200, "unexpected answer shape");
+      job = next.data;
+      input.onProgress?.(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
+    }
+  } catch (err) {
+    if (pollSignal.reason === timeoutError) throw timeoutError;
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
 
   // Times are milliseconds.
