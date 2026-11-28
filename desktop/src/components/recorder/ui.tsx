@@ -1,5 +1,18 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useTranslations } from "use-intl";
+import {
+  firstEnabledIndex,
+  initialListboxIndex,
+  lastEnabledIndex,
+  nextEnabledIndex,
+} from "../../lib/listboxNavigation";
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+const FOCUS_RING_INSET =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-flash-500";
+
+const SettingRowContext = createContext<{ titleId: string; subtitleId?: string } | null>(null);
 
 export type IconName =
   | "monitor"
@@ -173,7 +186,7 @@ export function OnOffPill({
         e.stopPropagation();
         onClick();
       }}
-      className={`shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+      className={`shrink-0 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${FOCUS_RING} ${
         on ? "bg-emerald-700 text-white hover:bg-emerald-800" : "bg-stone-500 text-white hover:bg-ink-600"
       } disabled:opacity-50`}
     >
@@ -217,7 +230,7 @@ export function Row({
       }}
       title={title}
       className={`relative flex w-full items-center gap-3 overflow-hidden rounded-2xl bg-row px-4 text-left transition-colors ${
-        onClick ? "cursor-pointer hover:bg-row-hover" : ""
+        onClick ? `cursor-pointer hover:bg-row-hover ${FOCUS_RING_INSET}` : ""
       } ${className}`}
       style={{ minHeight: 60 }}
     >
@@ -242,15 +255,17 @@ export function Switch({
   disabled?: boolean;
   label: string;
 }) {
+  const row = useContext(SettingRowContext);
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-describedby={row?.subtitleId}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${FOCUS_RING} ${
         checked ? "bg-flash-500" : "bg-stone-400"
       } disabled:opacity-50`}
     >
@@ -279,27 +294,32 @@ export function SettingRow({
   children?: ReactNode;
   disabled?: boolean;
 }) {
+  const baseId = useId();
+  const titleId = `${baseId}-title`;
+  const subtitleId = subtitle ? `${baseId}-subtitle` : undefined;
   return (
-    <div className={`border-b border-subtle px-5 py-4 ${disabled ? "opacity-50" : ""}`}>
-      <div className="flex items-center gap-3">
-        {icon && (
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-row text-ink-text">
-            <Icon name={icon} size={22} />
-          </span>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-[17px] font-semibold leading-tight text-ink-text">{title}</div>
-          {subtitle && <div className="mt-0.5 text-[13px] leading-snug text-ink-secondary">{subtitle}</div>}
+    <SettingRowContext.Provider value={{ titleId, subtitleId }}>
+      <div className={`border-b border-subtle px-5 py-4 ${disabled ? "opacity-50" : ""}`}>
+        <div className="flex items-center gap-3">
+          {icon && (
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-row text-ink-text">
+              <Icon name={icon} size={22} />
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <div id={titleId} className="text-[17px] font-semibold leading-tight text-ink-text">{title}</div>
+            {subtitle && <p id={subtitleId} className="mt-0.5 text-[13px] leading-snug text-ink-secondary">{subtitle}</p>}
+          </div>
+          {trailing && <div className="shrink-0">{trailing}</div>}
         </div>
-        {trailing && <div className="shrink-0">{trailing}</div>}
+        {children && <div className="mt-3">{children}</div>}
       </div>
-      {children && <div className="mt-3">{children}</div>}
-    </div>
+    </SettingRowContext.Provider>
   );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
-  return <div className="px-5 pb-2 pt-5 text-[19px] font-bold text-ink-text">{children}</div>;
+  return <h2 className="px-5 pb-2 pt-5 text-[19px] font-bold text-ink-text">{children}</h2>;
 }
 
 /** Back arrow + title, shared by every sub-screen. */
@@ -311,7 +331,7 @@ export function ScreenHeader({ title, onBack, trailing }: { title: string; onBac
         type="button"
         onClick={onBack}
         aria-label={t("back")}
-        className="flex h-9 w-9 items-center justify-center rounded-full text-ink-text hover:bg-row"
+        className={`flex h-9 w-9 items-center justify-center rounded-full text-ink-text hover:bg-row ${FOCUS_RING}`}
       >
         <Icon name="chevronLeft" size={22} />
       </button>
@@ -327,23 +347,38 @@ export function Tabs<T extends string>({
   value,
   onChange,
 }: {
-  tabs: Array<{ value: T; label: string }>;
+  tabs: Array<{ value: T; label: string; disabled?: boolean }>;
   value: T;
   onChange: (v: T) => void;
 }) {
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const index = Math.max(0, tabs.findIndex((t) => t.value === value));
   const width = 100 / tabs.length;
+  const onTabKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    let next = -1;
+    if (e.key === "ArrowRight") next = nextEnabledIndex(tabs, index, 1, { wrap: true });
+    else if (e.key === "ArrowLeft") next = nextEnabledIndex(tabs, index, -1, { wrap: true });
+    else if (e.key === "Home") next = firstEnabledIndex(tabs);
+    else if (e.key === "End") next = lastEnabledIndex(tabs);
+    if (next < 0 || next === index) return;
+    e.preventDefault();
+    onChange(tabs[next].value);
+    tabRefs.current[next]?.focus();
+  };
   return (
     <div className="relative mx-5 shrink-0 border-b border-subtle">
-      <div className="flex" role="tablist">
-        {tabs.map((tab) => (
+      <div className="flex" role="tablist" onKeyDown={onTabKeyDown}>
+        {tabs.map((tab, tabIndex) => (
           <button
             key={tab.value}
+            ref={(el) => {
+              tabRefs.current[tabIndex] = el;
+            }}
             type="button"
             role="tab"
             aria-selected={tab.value === value}
             onClick={() => onChange(tab.value)}
-            className={`flex-1 whitespace-nowrap pb-3 pt-2 text-[15px] font-semibold transition-colors ${
+            className={`flex-1 whitespace-nowrap rounded-t-md pb-3 pt-2 text-[15px] font-semibold transition-colors ${FOCUS_RING_INSET} ${
               tab.value === value ? "text-ink-text" : "text-ink-secondary hover:text-ink-text"
             }`}
           >
@@ -522,15 +557,39 @@ export function InlineSelect<T extends string>({
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const listboxId = useId();
+  const row = useContext(SettingRowContext);
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  const current = items.find((i) => i.value === value) ?? items[0];
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedIndex = items.findIndex((i) => i.value === value);
+  const current = (selectedIndex >= 0 ? items[selectedIndex] : undefined) ?? items[0];
+
+  const openMenu = (edge: "start" | "end" = "start") => {
+    const start = initialListboxIndex(items, selectedIndex, edge);
+    setActiveIndex(start);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    if (activeIndex >= 0) {
+      optionRefs.current[activeIndex]?.focus();
+    }
+  }, [open, activeIndex]);
+
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent): void {
       if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
     }
     function onKey(e: KeyboardEvent): void {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -539,36 +598,79 @@ export function InlineSelect<T extends string>({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  const onTriggerKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if (open) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      openMenu("start");
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      openMenu("end");
+    }
+  };
+
+  const onListboxKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((idx) => nextEnabledIndex(items, idx, 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((idx) => nextEnabledIndex(items, idx, -1));
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      setActiveIndex(firstEnabledIndex(items));
+    } else if (e.key === "End") {
+      e.preventDefault();
+      setActiveIndex(lastEnabledIndex(items));
+    } else if (e.key === "Tab") {
+      setOpen(false);
+    }
+  };
+
   return (
     <div ref={wrapRef} className="relative">
       <button
+        ref={triggerRef}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
-        onClick={() => setOpen((o) => !o)}
-        className="flex max-w-[150px] items-center gap-1 rounded-lg px-2 py-1 text-[16px] font-semibold text-ink-text hover:bg-row"
+        aria-describedby={row?.subtitleId}
+        onClick={() => (open ? setOpen(false) : openMenu("start"))}
+        onKeyDown={onTriggerKeyDown}
+        className={`flex max-w-[150px] items-center gap-1 rounded-lg px-2 py-1 text-[16px] font-semibold text-ink-text hover:bg-row ${FOCUS_RING}`}
       >
         <span className="truncate">{current?.label ?? ""}</span>
         <Icon name="chevronDown" size={18} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div
+          id={listboxId}
           role="listbox"
+          aria-label={ariaLabel}
+          onKeyDown={onListboxKeyDown}
           className="absolute right-0 top-full z-40 mt-1 min-w-[180px] max-w-[260px] overflow-hidden rounded-xl bg-surface py-1 shadow-pop animate-pop-in"
         >
-          {items.map((item) => (
+          {items.map((item, idx) => (
             <button
               key={item.value}
+              ref={(el) => {
+                optionRefs.current[idx] = el;
+              }}
               type="button"
               role="option"
+              tabIndex={idx === activeIndex ? 0 : -1}
               aria-selected={item.value === value}
               disabled={item.disabled}
+              onFocus={() => setActiveIndex(idx)}
               onClick={() => {
                 onChange(item.value);
                 setOpen(false);
+                triggerRef.current?.focus();
               }}
-              className={`block w-full truncate px-3 py-2 text-left text-[15px] ${
+              className={`block w-full truncate px-3 py-2 text-left text-[15px] ${FOCUS_RING_INSET} ${
                 item.value === value ? "bg-sheet-link-soft text-sheet-link" : "text-ink-text hover:bg-row"
               } disabled:opacity-50`}
             >
@@ -604,14 +706,22 @@ export function PrimaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`w-full rounded-2xl py-3.5 text-[17px] font-bold transition-colors disabled:opacity-60 ${toneClass}`}
+      className={`w-full rounded-2xl py-3.5 text-[17px] font-bold transition-colors disabled:opacity-60 ${FOCUS_RING} ${toneClass}`}
     >
       {children}
     </button>
   );
 }
 
-export function Notice({ tone, children }: { tone: "info" | "warn" | "error" | "ok"; children: ReactNode }) {
+export function Notice({
+  tone,
+  role,
+  children,
+}: {
+  tone: "info" | "warn" | "error" | "ok";
+  role?: "status" | "alert" | "note";
+  children: ReactNode;
+}) {
   const cls =
     tone === "error"
       ? "border-status-error-line bg-status-error-soft text-status-error"
@@ -620,5 +730,10 @@ export function Notice({ tone, children }: { tone: "info" | "warn" | "error" | "
         : tone === "ok"
           ? "border-status-ok-line bg-status-ok-soft text-status-ok"
           : "border-subtle bg-row text-ink-secondary";
-  return <div className={`rounded-xl border px-3 py-2 text-[12px] leading-snug ${cls}`}>{children}</div>;
+  const resolvedRole = role ?? (tone === "error" ? "alert" : tone === "info" ? "note" : "status");
+  return (
+    <div role={resolvedRole} className={`rounded-xl border px-3 py-2 text-[12px] leading-snug ${cls}`}>
+      {children}
+    </div>
+  );
 }
