@@ -269,6 +269,42 @@ describe("saveConfig", () => {
   });
 });
 
+describe("UTF-8 byte order mark", () => {
+  it("loads a config with a leading BOM", () => {
+    writeConfig('\uFEFF{"transcription":{"kind":"none"}}');
+    expect(loadConfig(env).transcription).toEqual({ kind: "none" });
+  });
+
+  it("updates a BOM-prefixed config while preserving existing settings", () => {
+    writeConfig('\uFEFF{"futureSetting":{"a":1}}');
+    saveConfig({ transcription: { kind: "none" } }, env);
+    const saved = readFileSync(file, "utf8");
+    expect(saved.charCodeAt(0)).not.toBe(0xfeff);
+    expect(JSON.parse(saved)).toEqual({
+      version: 1,
+      futureSetting: { a: 1 },
+      transcription: { kind: "none" },
+    });
+  });
+
+  it.each(['{"version":1,}', '{\n  "version": 1,\n}'])(
+    "preserves JSON error positions with a BOM: %s",
+    (invalid) => {
+      writeConfig(invalid);
+      const withoutBom = errorOf(() => loadConfig(env)).message;
+      expect(withoutBom).toMatch(/not valid JSON at line \d+, column \d+/);
+      writeConfig("\uFEFF" + invalid);
+      expect(errorOf(() => loadConfig(env)).message).toBe(withoutBom);
+    },
+  );
+
+  it("preserves BOM characters inside JSON strings", () => {
+    writeConfig('\uFEFF{"futureSetting":"\uFEFFkeep"}');
+    saveConfig({}, env);
+    expect(JSON.parse(readFileSync(file, "utf8")).futureSetting).toBe("\uFEFFkeep");
+  });
+});
+
 describe("a malformed file", () => {
   it("names the file and position for bad JSON, without quoting it", () => {
     writeConfig('{\n  "model": { "preset": "openai", "apiKey": "sk-secret-123" ,, }\n}');
