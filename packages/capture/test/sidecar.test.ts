@@ -67,6 +67,26 @@ describe("samplesToEvents", () => {
     expect(events.map((e) => e.time_ms)).toEqual([0, 50, 100]);
   });
 
+  it("closes buttons still held at endedAt at the last known position", () => {
+    const events = samplesToEvents([s(0, 10, 20, 0), s(50, 10, 20, 1), s(120, 35, 45, 5), s(600, 99, 99, 0)], T0, T0 + 500);
+    expect(events).toEqual([
+      { kind: "move", time_ms: 0, x: 10, y: 20 },
+      { kind: "down", time_ms: 50, x: 10, y: 20, button: 1 },
+      { kind: "move", time_ms: 120, x: 35, y: 45 },
+      { kind: "down", time_ms: 120, x: 35, y: 45, button: 3 },
+      { kind: "up", time_ms: 500, x: 35, y: 45, button: 1 },
+      { kind: "up", time_ms: 500, x: 35, y: 45, button: 3 },
+    ]);
+  });
+
+  it("leaves held buttons open without endedAt and never closes pre-start buttons", () => {
+    expect(samplesToEvents([s(0, 10, 20, 0), s(50, 10, 20, 1)], T0)).toEqual([
+      { kind: "move", time_ms: 0, x: 10, y: 20 },
+      { kind: "down", time_ms: 50, x: 10, y: 20, button: 1 },
+    ]);
+    expect(samplesToEvents([s(-50, 1, 1, 1), s(0, 1, 1, 1)], T0, T0 + 200)).toEqual([{ kind: "move", time_ms: 0, x: 1, y: 1 }]);
+  });
+
   it("returns nothing without samples", () => {
     expect(samplesToEvents([], T0)).toEqual([]);
   });
