@@ -32,7 +32,7 @@ import { dirname } from "node:path";
 import { PROVIDER_BASE_URLS, type ModelProvider } from "@clipy/moments";
 import { ConfigError } from "./errors.js";
 import { configPath, envValue } from "./paths.js";
-import { presetProvider, TRANSCRIPTION_PRESETS } from "./presets.js";
+import { DEFAULT_MODELS, presetProvider, TRANSCRIPTION_PRESETS } from "./presets.js";
 import {
   describeIssues,
   KEYED_TRANSCRIPTION_KINDS,
@@ -79,6 +79,26 @@ export interface LocalConfig {
   transcription: TranscriptionConfig;
   /** Always false in the local edition. */
   telemetry: false;
+}
+
+/** A source label for a setting, with only the name of any environment override. */
+export type ConfigSource = "file" | "default" | `env:CLIPY_${string}`;
+
+export interface ConfigExplanation {
+  /** Each field holds its source, or null when it has no value for the selected provider. */
+  model: {
+    preset: ConfigSource;
+    baseUrl: ConfigSource | null;
+    model: ConfigSource | null;
+    apiKey: ConfigSource | null;
+  };
+  transcription: {
+    kind: ConfigSource;
+    baseUrl: ConfigSource | null;
+    model: ConfigSource | null;
+    apiKey: ConfigSource | null;
+  };
+  notes: string[];
 }
 
 /** The default when nothing is configured: the local "English, fast" model, on every platform. */
@@ -135,28 +155,61 @@ function withPath(error: unknown, path: string): never {
   throw error;
 }
 
-function resolveModel(stored: StoredModel | null | undefined, env: NodeJS.ProcessEnv, path: string) {
+function fieldSource(envName: `CLIPY_${string}`, override?: string, saved?: string, hasDefault = false): ConfigSource | null {
+  if (override) return `env:${envName}`;
+  if (saved) return "file";
+  return hasDefault ? "default" : null;
+}
+
+function mergeModel(stored: StoredModel | null | undefined, env: NodeJS.ProcessEnv) {
   const envPreset = envValue(env, "CLIPY_MODEL_PROVIDER");
   const envBase = envValue(env, "CLIPY_MODEL_BASE_URL");
   const envKey = envValue(env, "CLIPY_MODEL_API_KEY");
   const envModel = envValue(env, "CLIPY_MODEL");
 
+  const notes: string[] = [];
+  let presetSource: ConfigSource = stored === undefined ? "default" : "file";
   let draft: Partial<StoredModel> = stored ? { ...stored } : {};
   if (envPreset) {
     const preset = oneOf(MODEL_PRESETS, envPreset, "CLIPY_MODEL_PROVIDER");
-    if (preset !== draft.preset) draft = { preset };
+    if (preset !== draft.preset) {
+      if (draft.apiKey) notes.push("saved model key not used: CLIPY_MODEL_PROVIDER switched provider");
+      if (draft.model) notes.push("saved model name not used: CLIPY_MODEL_PROVIDER switched provider");
+      draft = { preset };
+    }
+    presetSource = "env:CLIPY_MODEL_PROVIDER";
   }
   if (envBase) {
     // A different endpoint never inherits the saved key. The model name is kept.
     const savedBase = draft.baseUrl ?? (draft.preset && draft.preset !== "custom" ? PROVIDER_BASE_URLS[draft.preset] : undefined);
-    if (!sameUrl(envBase, savedBase)) draft = { preset: draft.preset ?? "custom", model: draft.model };
+    if (!sameUrl(envBase, savedBase)) {
+      if (draft.apiKey) notes.push("saved model key not used: CLIPY_MODEL_BASE_URL changed the endpoint");
+      if (!draft.preset) presetSource = "env:CLIPY_MODEL_BASE_URL";
+      draft = { preset: draft.preset ?? "custom", model: draft.model };
+    }
     draft.baseUrl = envBase;
   }
   // A key or model name alone picks the default provider, OpenRouter.
-  if (!draft.preset && (envKey || envModel)) draft = { preset: "openrouter" };
+  if (!draft.preset && (envKey || envModel)) {
+    draft = { preset: "openrouter" };
+    presetSource = "default";
+  }
   if (envKey) draft.apiKey = envKey;
   if (envModel) draft.model = envModel;
 
+  const hasDefaultBase = draft.preset !== undefined && draft.preset !== "custom";
+  const hasDefaultModel = Boolean(draft.preset && DEFAULT_MODELS[draft.preset]);
+  const sources: ConfigExplanation["model"] = {
+    preset: presetSource,
+    baseUrl: fieldSource("CLIPY_MODEL_BASE_URL", envBase, draft.baseUrl, hasDefaultBase),
+    model: fieldSource("CLIPY_MODEL", envModel, draft.model, hasDefaultModel),
+    apiKey: fieldSource("CLIPY_MODEL_API_KEY", envKey, draft.apiKey),
+  };
+  return { draft, sources, notes };
+}
+
+function resolveModel(stored: StoredModel | null | undefined, env: NodeJS.ProcessEnv, path: string) {
+  const { draft } = mergeModel(stored, env);
   if (!draft.preset) return { model: null, modelPreset: null };
   try {
     return { model: presetProvider(draft.preset, draft.apiKey, draft.model, draft.baseUrl), modelPreset: draft.preset };
@@ -172,31 +225,62 @@ function transcriptionBase(draft: { kind?: StoredTranscriptionKind; baseUrl?: st
   return undefined;
 }
 
-function resolveTranscription(stored: StoredTranscription | undefined, env: NodeJS.ProcessEnv, path: string): TranscriptionConfig {
+function mergeTranscription(stored: StoredTranscription | undefined, env: NodeJS.ProcessEnv) {
   const envKind = envValue(env, "CLIPY_TRANSCRIBE");
   const envKey = envValue(env, "CLIPY_TRANSCRIBE_API_KEY");
   const envModel = envValue(env, "CLIPY_TRANSCRIBE_MODEL");
   const envBase = envValue(env, "CLIPY_TRANSCRIBE_BASE_URL");
 
+  const notes: string[] = [];
+  let kindSource: ConfigSource = stored ? "file" : "default";
+  let modelSource: ConfigSource = stored && "model" in stored && stored.model ? "file" : "default";
   type Draft = { kind: StoredTranscriptionKind; apiKey?: string; model?: string; baseUrl?: string };
   let draft: Draft = { ...(stored ?? DEFAULT_TRANSCRIPTION) };
   if (envKind) {
     const kind = oneOf(TRANSCRIPTION_KINDS, envKind, "CLIPY_TRANSCRIBE");
-    if (kind !== draft.kind) draft = { kind };
+    if (kind !== draft.kind) {
+      if (draft.apiKey) notes.push("saved transcription key not used: CLIPY_TRANSCRIBE switched provider");
+      if (modelSource === "file") notes.push("saved transcription model not used: CLIPY_TRANSCRIBE switched provider");
+      draft = { kind };
+      modelSource = "default";
+    }
+    kindSource = "env:CLIPY_TRANSCRIBE";
   }
   if (envBase) {
     if (envKind && !["openai", "groq", "openai-compatible"].includes(envKind)) {
       throw new ConfigError(`CLIPY_TRANSCRIBE_BASE_URL only applies to OpenAI-compatible transcription, not ${envKind}.`);
     }
     // A different endpoint never inherits the saved key. The model name is kept.
+    const sameEndpoint = sameUrl(envBase, transcriptionBase(draft));
+    if (!sameEndpoint) {
+      if (draft.apiKey) notes.push("saved transcription key not used: CLIPY_TRANSCRIBE_BASE_URL changed the endpoint");
+      // A new endpoint replaces a preset selection. An already custom kind stays custom.
+      if (draft.kind !== "openai-compatible") kindSource = "env:CLIPY_TRANSCRIBE_BASE_URL";
+    }
     const model = draft.model ?? defaultTranscriptionModel(draft.kind);
-    draft = sameUrl(envBase, transcriptionBase(draft))
+    draft = sameEndpoint
       ? { kind: "openai-compatible", baseUrl: envBase, apiKey: draft.apiKey, model }
       : { kind: "openai-compatible", baseUrl: envBase, model: draft.model };
   }
   if (envKey) draft.apiKey = envKey;
-  if (envModel) draft.model = envModel;
+  if (envModel) {
+    draft.model = envModel;
+    modelSource = "env:CLIPY_TRANSCRIBE_MODEL";
+  }
 
+  const usesKey = draft.kind !== "none" && draft.kind !== "local";
+  const usesModel = draft.kind !== "none" && (draft.model || draft.kind === "local" || defaultTranscriptionModel(draft.kind));
+  const sources: ConfigExplanation["transcription"] = {
+    kind: kindSource,
+    baseUrl: fieldSource("CLIPY_TRANSCRIBE_BASE_URL", envBase, draft.baseUrl, Boolean(transcriptionBase(draft))),
+    model: usesModel ? modelSource : null,
+    apiKey: usesKey ? fieldSource("CLIPY_TRANSCRIBE_API_KEY", envKey, draft.apiKey) : null,
+  };
+  return { draft, sources, notes };
+}
+
+function resolveTranscription(stored: StoredTranscription | undefined, env: NodeJS.ProcessEnv, path: string): TranscriptionConfig {
+  const { draft } = mergeTranscription(stored, env);
   const needKey = (who: string) =>
     new ConfigError(
       `Transcription with ${who} needs an API key. Set CLIPY_TRANSCRIBE_API_KEY or "transcription.apiKey" (config file: ${path}).`,
@@ -257,6 +341,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): LocalConfig {
   const stored = readStored(path);
   const { model, modelPreset } = resolveModel(stored.model, env, path);
   return { model, modelPreset, transcription: resolveTranscription(stored.transcription, env, path), telemetry: false };
+}
+
+/**
+ * Report where the settings selected by the merge came from. The report
+ * contains only source labels and notes, so it can be shared without values.
+ * It can explain overrides even when required settings for the selected
+ * provider are missing. Use loadConfig to validate the resolved settings.
+ */
+export function explainConfig(env: NodeJS.ProcessEnv = process.env): ConfigExplanation {
+  const stored = readStored(configPath(env));
+  const model = mergeModel(stored.model, env);
+  const transcription = mergeTranscription(stored.transcription, env);
+  return { model: model.sources, transcription: transcription.sources, notes: [...model.notes, ...transcription.notes] };
 }
 
 /**

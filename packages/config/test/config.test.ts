@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ConfigError, configPath, loadConfig, presetProvider, saveConfig, type ModelPreset } from "../src/index.js";
+import { ConfigError, configPath, explainConfig, loadConfig, presetProvider, saveConfig, type ModelPreset } from "../src/index.js";
 
 let dir: string;
 let file: string;
@@ -236,6 +236,104 @@ describe("transcription presets", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
     expect(errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "huge" })).message).toMatch(/english-fast, multilingual/);
+  });
+});
+
+describe("explainConfig", () => {
+  it("reports defaults, disabled providers and implicit providers", () => {
+    expect(explainConfig(env)).toEqual({
+      model: { preset: "default", baseUrl: null, model: null, apiKey: null },
+      transcription: { kind: "default", baseUrl: null, model: "default", apiKey: null },
+      notes: [],
+    });
+
+    saveConfig({ model: null, transcription: { kind: "none" } }, env);
+    expect(explainConfig({ ...env, CLIPY_TRANSCRIBE_API_KEY: "unused", CLIPY_TRANSCRIBE_MODEL: "unused" })).toEqual({
+      model: { preset: "file", baseUrl: null, model: null, apiKey: null },
+      transcription: { kind: "file", baseUrl: null, model: null, apiKey: null },
+      notes: [],
+    });
+    expect(explainConfig({ ...env, CLIPY_MODEL_API_KEY: "key" }).model).toEqual({
+      preset: "default", baseUrl: "default", model: "default", apiKey: "env:CLIPY_MODEL_API_KEY",
+    });
+    expect(explainConfig({ ...env, CLIPY_MODEL_BASE_URL: "http://localhost/v1", CLIPY_MODEL: "local" }).model).toEqual({
+      preset: "env:CLIPY_MODEL_BASE_URL", baseUrl: "env:CLIPY_MODEL_BASE_URL", model: "env:CLIPY_MODEL", apiKey: null,
+    });
+  });
+
+  it("ignores blank env vars and returns only sources, including for saved credentials", () => {
+    const savedKey = "fixture-model-file-secret";
+    const speechKey = "fixture-speech-file-secret";
+    saveConfig({
+      model: { preset: "openai", baseUrl: `https://example.com/v1?key=${savedKey}`, apiKey: savedKey, model: "saved-model" },
+      transcription: { kind: "deepgram", apiKey: speechKey, model: "nova-3" },
+    }, env);
+    const explanation = explainConfig({ ...env, CLIPY_MODEL: " ", CLIPY_MODEL_API_KEY: "", CLIPY_TRANSCRIBE: " " });
+    expect(explanation).toEqual({
+      model: { preset: "file", baseUrl: "file", model: "file", apiKey: "file" },
+      transcription: { kind: "file", baseUrl: null, model: "file", apiKey: "file" },
+      notes: [],
+    });
+    expect(JSON.stringify(explanation)).not.toContain(savedKey);
+    expect(JSON.stringify(explanation)).not.toContain(speechKey);
+  });
+
+  it("explains discarded settings on provider switches, even before a new key is set", () => {
+    saveConfig({
+      model: { preset: "openai", apiKey: "fixture-model-file-secret", model: "saved-model" },
+      transcription: { kind: "deepgram", apiKey: "fixture-speech-file-secret", model: "nova-3" },
+    }, env);
+    const switched = { ...env, CLIPY_MODEL_PROVIDER: "groq", CLIPY_TRANSCRIBE: "groq" };
+    expect(explainConfig(switched)).toEqual({
+      model: { preset: "env:CLIPY_MODEL_PROVIDER", baseUrl: "default", model: "default", apiKey: null },
+      transcription: { kind: "env:CLIPY_TRANSCRIBE", baseUrl: "default", model: "default", apiKey: null },
+      notes: [
+        "saved model key not used: CLIPY_MODEL_PROVIDER switched provider",
+        "saved model name not used: CLIPY_MODEL_PROVIDER switched provider",
+        "saved transcription key not used: CLIPY_TRANSCRIBE switched provider",
+        "saved transcription model not used: CLIPY_TRANSCRIBE switched provider",
+      ],
+    });
+    expect(() => loadConfig(switched)).toThrow(ConfigError);
+    const modelKey = "fixture-model-env-secret";
+    const speechKey = "fixture-speech-env-secret";
+    const withKeys = explainConfig({ ...switched, CLIPY_MODEL_API_KEY: modelKey, CLIPY_TRANSCRIBE_API_KEY: speechKey });
+    expect(withKeys.model.apiKey).toBe("env:CLIPY_MODEL_API_KEY");
+    expect(withKeys.transcription.apiKey).toBe("env:CLIPY_TRANSCRIBE_API_KEY");
+    expect(JSON.stringify(withKeys)).not.toContain(modelKey);
+    expect(JSON.stringify(withKeys)).not.toContain(speechKey);
+  });
+
+  it("keeps saved keys for the same endpoint and explains their removal for a different one", () => {
+    saveConfig({
+      model: { preset: "openai", apiKey: "saved-key", model: "gpt-file" },
+      transcription: { kind: "openai", apiKey: "saved-speech-key", model: "whisper-file" },
+    }, env);
+    const sameUrl = "https://api.openai.com/v1/";
+    const same = explainConfig({ ...env, CLIPY_MODEL_PROVIDER: "openai", CLIPY_MODEL_BASE_URL: sameUrl, CLIPY_TRANSCRIBE_BASE_URL: sameUrl });
+    expect(same).toEqual({
+      model: { preset: "env:CLIPY_MODEL_PROVIDER", baseUrl: "env:CLIPY_MODEL_BASE_URL", model: "file", apiKey: "file" },
+      transcription: { kind: "file", baseUrl: "env:CLIPY_TRANSCRIBE_BASE_URL", model: "file", apiKey: "file" },
+      notes: [],
+    });
+    const otherUrl = "http://localhost:8000/v1";
+    const moved = explainConfig({ ...env, CLIPY_MODEL_BASE_URL: otherUrl, CLIPY_TRANSCRIBE_BASE_URL: otherUrl });
+    expect(moved).toEqual({
+      model: { preset: "file", baseUrl: "env:CLIPY_MODEL_BASE_URL", model: "file", apiKey: null },
+      transcription: { kind: "env:CLIPY_TRANSCRIBE_BASE_URL", baseUrl: "env:CLIPY_TRANSCRIBE_BASE_URL", model: "file", apiKey: null },
+      notes: [
+        "saved model key not used: CLIPY_MODEL_BASE_URL changed the endpoint",
+        "saved transcription key not used: CLIPY_TRANSCRIBE_BASE_URL changed the endpoint",
+      ],
+    });
+  });
+
+  it("reports a default transcription model only when the selected endpoint supplies it", () => {
+    saveConfig({ transcription: { kind: "openai", apiKey: "saved-speech-key" } }, env);
+    expect(explainConfig({ ...env, CLIPY_TRANSCRIBE_BASE_URL: "https://api.openai.com/v1/" }).transcription.model).toBe("default");
+    const moved = { ...env, CLIPY_TRANSCRIBE_BASE_URL: "http://localhost/v1" };
+    expect(explainConfig(moved).transcription.model).toBeNull();
+    expect(explainConfig({ ...moved, CLIPY_TRANSCRIBE_MODEL: "whisper" }).transcription.model).toBe("env:CLIPY_TRANSCRIBE_MODEL");
   });
 });
 
