@@ -232,6 +232,26 @@ describe("transcription presets", () => {
     });
   });
 
+  it.each(["deepgram", "local", "assemblyai"] as const)(
+    "rejects a custom base URL when the saved provider is %s",
+    (kind) => {
+      const transcription = kind === "local"
+        ? { kind, model: "english-fast" as const }
+        : { kind, apiKey: "secret-key", model: "saved-model" };
+      saveConfig({ transcription }, env);
+
+      const error = errorOf(() =>
+        loadConfig({
+          ...env,
+          CLIPY_TRANSCRIBE_BASE_URL: "http://localhost:8000/v1",
+        }),
+      );
+
+      expect(error.message).toContain(`not ${kind}`);
+      expect(error.message).not.toContain("secret-key");
+    },
+  );
+
   it("picks the multilingual local model", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });

@@ -185,8 +185,8 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
     if (kind !== draft.kind) draft = { kind };
   }
   if (envBase) {
-    if (envKind && !["openai", "groq", "openai-compatible"].includes(envKind)) {
-      throw new ConfigError(`CLIPY_TRANSCRIBE_BASE_URL only applies to OpenAI-compatible transcription, not ${envKind}.`);
+    if (!["openai", "groq", "openai-compatible"].includes(draft.kind)) {
+      throw new ConfigError(`CLIPY_TRANSCRIBE_BASE_URL only applies to OpenAI-compatible transcription, not ${draft.kind}.`);
     }
     // A different endpoint never inherits the saved key. The model name is kept.
     const model = draft.model ?? defaultTranscriptionModel(draft.kind);
