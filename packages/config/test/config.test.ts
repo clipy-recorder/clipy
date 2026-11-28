@@ -279,6 +279,19 @@ describe("a malformed file", () => {
     expect(error.stack ?? "").not.toContain("sk-secret-123");
   });
 
+    it("gives the line and column of an unquoted value, without quoting the file", () => {
+    writeConfig('{\n  "model": { "preset": "openai", "apiKey": sk-secret-123 }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toContain(file);
+    expect(error.message).toMatch(/not valid JSON at line 2, column 44\./);
+    expect(error.message).not.toContain("sk-secret-123");
+  });
+
+  it("counts the line of an unquoted value in a file with Windows line endings", () => {
+    writeConfig('{\r\n  "transcription": {\r\n    "kind": local\r\n  }\r\n}');
+    expect(errorOf(() => loadConfig(env)).message).toMatch(/not valid JSON at line 3, column 13\./);
+  });
+  
   it("names the bad field", () => {
     writeConfig({ model: { preset: "anthropic", apiKey: "sk-secret-123" } });
     const error = errorOf(() => loadConfig(env));

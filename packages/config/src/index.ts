@@ -92,6 +92,29 @@ function lineAndColumn(text: string, offset: number): string {
   return `line ${before.length}, column ${before[before.length - 1].length + 1}`;
 }
 
+/**
+ * Where JSON.parse gave up, as a character offset. V8 names the position for most
+ * errors, but not for an unexpected token such as an unquoted value ("a": hello),
+ * which reads `Unexpected token 'h', "..." is not valid JSON`. For those, parse
+ * longer and longer prefixes: the first one that fails on a token, rather than on
+ * running out of text, ends at the bad character. Config files are small, so the
+ * repeated parsing costs nothing.
+ */
+function jsonErrorOffset(text: string, message: string): number | undefined {
+  const reported = /position (\d+)/.exec(message)?.[1];
+  if (reported) return Number(reported);
+  for (let end = 1; end <= text.length; end++) {
+    try {
+      JSON.parse(text.slice(0, end));
+    } catch (error) {
+      const prefixMessage = String((error as Error).message);
+      const at = /position (\d+)/.exec(prefixMessage)?.[1];
+      if (at ? Number(at) < end : prefixMessage.startsWith("Unexpected token")) return end - 1;
+    }
+  }
+  return undefined;
+}
+
 /** The file as saved, validated. A missing file is an empty config. */
 function readStored(path: string): StoredFile {
   let text: string;
@@ -109,8 +132,8 @@ function readStored(path: string): StoredFile {
     raw = JSON.parse(text);
   } catch (error) {
     // V8's message can quote part of the file, which may hold a key. Keep only the position.
-    const position = /position (\d+)/.exec(String((error as Error).message))?.[1];
-    const where = position ? ` at ${lineAndColumn(text, Number(position))}` : "";
+    const offset = jsonErrorOffset(text, String((error as Error).message));
+    const where = offset === undefined ? "" : ` at ${lineAndColumn(text, offset)}`;
     throw new ConfigError(`The config file ${path} is not valid JSON${where}.`);
   }
   const parsed = storedConfigSchema.safeParse(raw);
