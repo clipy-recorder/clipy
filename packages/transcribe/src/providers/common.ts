@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { BYTES_PER_SECOND, detectSilences, measureMeanVolume, readWavSlice, silenceThresholds, throwIfAborted, type WavInfo } from "../audio.js";
 import { mergePieces, planChunks, speechSecIn, trimToSpeech, type ChunkPlan, type RelativeSegment, type SilenceSpan } from "../chunking.js";
 import type { TranscriptGap, TranscriptSegment } from "../types.js";
+import { ProviderError } from "./http.js";
 
 /** What every engine is handed: the extracted 16 kHz mono WAV and a way to find its silences. */
 export interface AudioInput {
@@ -106,10 +107,29 @@ export function pieceGap(p: ChunkPlan, reason: string): TranscriptGap {
   return { startMs: Math.round(start * 1000), endMs: Math.round(end * 1000), reason };
 }
 
+/** Statuses that mean a setting is wrong (key, access, URL or model) or the pieces are too large. */
+const STOP_STATUSES: ReadonlySet<number> = new Set([401, 403, 404, 413]);
+
+/**
+ * Whether a failed piece ends the whole run. A 400 does only while no piece
+ * has succeeded: Gemini can answer 400 to a bad API key, but once the same
+ * settings have worked, it is more likely about that one piece.
+ */
+function endsRun(err: ProviderError, succeeded: number): boolean {
+  if (err.status === undefined) return false;
+  return STOP_STATUSES.has(err.status) || (err.status === 400 && succeeded === 0);
+}
+
 /**
  * Send the audio to a provider in pieces small enough for its upload limit,
  * cut in silences, one piece at a time, and merge the results. A piece with
  * no speech at all is not sent and is reported as a gap.
+ *
+ * A piece the provider fails (a ProviderError) is also a gap, with the
+ * error's message as its reason, and the rest are still sent. The run rejects
+ * instead when cancelled, on an error that ends the run (see endsRun), on any
+ * error that is not a ProviderError, and, with the first error, when every
+ * piece that was sent failed.
  */
 export async function runInPieces(
   input: AudioInput,
@@ -123,6 +143,7 @@ export async function runInPieces(
   const pieces: Array<{ plan: (typeof plan)[number]; segments: RelativeSegment[] }> = [];
   const gaps: TranscriptGap[] = [];
   let language: string | undefined;
+  let firstFailure: ProviderError | undefined;
   for (const [i, p] of plan.entries()) {
     throwIfAborted(input.signal);
     if (skip.has(p.index)) {
@@ -132,11 +153,22 @@ export async function runInPieces(
     }
     const wav =
       plan.length === 1 ? await readFile(input.wavPath) : await readWavSlice(input.wavPath, input.info, p.extractStartSec, p.extractDurSec);
-    const out = await run(wav, p.extractDurSec);
-    language ??= out.language;
-    pieces.push({ plan: p, segments: out.segments });
+    try {
+      const out = await run(wav, p.extractDurSec);
+      language ??= out.language;
+      pieces.push({ plan: p, segments: out.segments });
+    } catch (err) {
+      // Cancellation wins over whatever the request failed with.
+      throwIfAborted(input.signal);
+      // `pieces` holds only the successes so far.
+      if (!(err instanceof ProviderError) || endsRun(err, pieces.length)) throw err;
+      firstFailure ??= err;
+      // A ProviderError message never holds a key or a response body.
+      gaps.push(pieceGap(p, err.message));
+    }
     input.onProgress?.((i + 1) / plan.length);
   }
+  if (firstFailure && pieces.length === 0) throw firstFailure;
   return { segments: mergePieces(pieces), language, gaps };
 }
 
