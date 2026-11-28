@@ -30,6 +30,7 @@ export type {
   TranscriptionConfig,
   TranscriptSegment,
 } from "./types.js";
+export { toSrt, toVtt } from "./subtitles.js";
 export { extractAudio, NoAudioTrackError } from "./audio.js";
 export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, type LocalModel, type ModelFile } from "./models.js";
 export { ModelNotInstalledError } from "./local.js";

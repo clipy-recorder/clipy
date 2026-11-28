@@ -15,6 +15,8 @@ moment selection.
 
 It is a port of the rules-only and model paths of `planMoments` in
 `@clipy/moments` (`packages/moments`), held to its output by golden files.
+For a plain-language explanation of what each rule notices while recording,
+see [Key moments in a recording](../../../../docs/moments.md).
 
 ## API
 
