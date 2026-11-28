@@ -164,11 +164,14 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
       const len = head.readUInt32LE(pos + 4);
       const body = pos + 8;
       if (id === "fmt ") {
+        // A cut-off or hand-made header must fail clearly, not read the next chunk as fmt or divide by zero.
+        if (len < 16 || body + 16 > head.length) throw new Error(`${path} has a damaged WAV header`);
         fmt = {
           channels: head.readUInt16LE(body + 2),
           sampleRate: head.readUInt32LE(body + 4),
           bits: head.readUInt16LE(body + 14),
         };
+        if (fmt.channels === 0 || fmt.sampleRate === 0 || fmt.bits === 0) throw new Error(`${path} has a damaged WAV header`);
       } else if (id === "data") {
         if (!fmt) break;
         // A streamed WAV can carry a placeholder length; trust the file size.
