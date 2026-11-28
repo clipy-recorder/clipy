@@ -107,7 +107,7 @@ export default function Notes() {
         style={{ fontSize, lineHeight: `${pitch}px` }}
         className="clipy-scroll min-h-0 flex-1 resize-none bg-transparent px-4 pb-3 text-[#2b2300] placeholder:text-[#a08a30] focus:outline-none"
       />
-      <p className="px-4 pb-2.5 text-[11px] text-[#a08a30]">Only you can see this. Never part of the recording.</p>
+      <p className="px-4 pb-2.5 text-[11px] text-[#a08a30]">{t("privacyFooter")}</p>
     </main>
   );
 }

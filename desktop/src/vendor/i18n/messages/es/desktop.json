@@ -86,6 +86,12 @@
   },
   "app": {
     "loading": "Cargando Clipy…",
+    "localEditionMismatch": {
+      "title": "Esta compilación de Clipy Local no coincide",
+      "body": "La ventana se compiló para Clipy Local, pero la aplicación que la ejecuta es {binary}. Vuelve a compilar con pnpm tauri:build (o pnpm tauri:dev) para que ambas partes sean de la misma edición.",
+      "official": "la aplicación oficial de {app}",
+      "older": "una compilación anterior de {app}"
+    },
     "firstLaunchUpdate": {
       "title": "Descargando el Clipy más reciente",
       "body": "Ya salió Clipy {version}. Lo estamos descargando para que empieces con la versión más nueva.",
@@ -242,6 +248,7 @@
     "clipboardClash": "{app} también se abre con {hotkey}, así que puede quedarse con la tecla en lugar de Clipy. Desinstala {app} o elige otra tecla para Portapapeles en Atajos.",
     "shortcutsHint": "Haz clic en un campo y presiona las teclas.",
     "localInfo": "Las grabaciones locales y su contexto AREC se quedan en la carpeta de Clipy en esta {device} y se borran a los {days} días si no las conservas. Las grabaciones en la nube guardan una copia local solo hasta que termina la subida.",
+    "localEditionInfo": "Las grabaciones locales y su contexto AREC se quedan en la carpeta de Clipy en esta {device} y se borran a los {days} días si no las conservas.",
     "localInfoWindows": "Local AI transcribe el audio en el servidor de Clipy y luego lo borra de allí; el video nunca sale de esta PC.",
     "openArec": {
       "title": "Abrir el AREC cuando esté listo",
@@ -560,6 +567,7 @@
     "startWithCountdown": "{label} ({seconds} s)",
     "starting": "Iniciando…",
     "openSite": "Abrir clipy.online",
+    "openLocalProject": "Abrir el proyecto Clipy Local",
     "captureMode": "Modo de captura",
     "recordVideo": "Grabar video",
     "takeScreenshot": "Hacer una captura de pantalla",
@@ -584,6 +592,8 @@
       "local": "Local AI",
       "localShort": "En esta {device}",
       "localHint": "Guarda el video y el AREC en esta {device}",
+      "localEditionShort": "Guardado en esta {device}",
+      "localEditionHint": "El video, el AREC y la transcripción se guardan en esta {device}",
       "whatLocal": "Qué hace Local AI",
       "preferences": "Preferencias de grabación"
     },
@@ -641,7 +651,8 @@
     "smaller": "Texto más pequeño",
     "larger": "Texto más grande",
     "hide": "Ocultar notas",
-    "placeholder": "Puntos a tratar, enlaces, eso que siempre olvidas mencionar…"
+    "placeholder": "Puntos a tratar, enlaces, eso que siempre olvidas mencionar…",
+    "privacyFooter": "Solo tú puedes ver estas notas. Nunca aparecen en la grabación."
   },
   "webcamControls": {
     "small": "Cámara pequeña",
@@ -905,6 +916,7 @@
       "screenshotBusy": "Ya hay una captura abierta para anotar.",
       "screenshotFailed": "La captura falló: {error}",
       "screenshotNote": "No se sube nada a menos que pulses Subir",
+      "screenshotNoteLocal": "Nada sale de este equipo",
       "annotatingOff": "Las anotaciones están desactivadas",
       "annotatingOffBody": "Las capturas van directo al portapapeles. Activa “Anotar antes de copiar” para marcarlas primero.",
       "annotatingTurnOn": "Activar anotaciones",
@@ -962,7 +974,8 @@
       "eyebrow": "Te damos la bienvenida a Clipy",
       "title": "Grábalo una vez. Todos pueden seguirlo, incluso tus agentes.",
       "start": "Empezar",
-      "body": "Graba tu pantalla, tu cámara y tu voz, obtén un enlace en cuanto te detengas y pasa la grabación a Claude Code o Codex como contexto legible. Vamos a dejarlo todo listo."
+      "body": "Graba tu pantalla, tu cámara y tu voz, obtén un enlace en cuanto te detengas y pasa la grabación a Claude Code o Codex como contexto legible. Vamos a dejarlo todo listo.",
+      "bodyLocal": "Graba tu pantalla, tu cámara y tu voz. El video se queda en esta {device} y Clipy genera una transcripción y un AREC que pueden leer agentes de IA como Claude Code, Codex o Cursor. Vamos a configurar la aplicación."
     },
     "signIn": {
       "title": "Inicia sesión en Clipy",
@@ -1058,6 +1071,7 @@
     },
     "visuals": {
       "linkCopied": "Enlace copiado",
+      "arecSaved": "AREC guardado",
       "agentRead": "Tu agente lo leyó",
       "settings": {
         "general": "General",

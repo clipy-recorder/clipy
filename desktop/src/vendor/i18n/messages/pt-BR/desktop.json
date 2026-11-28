@@ -86,6 +86,12 @@
   },
   "app": {
     "loading": "Carregando o Clipy…",
+    "localEditionMismatch": {
+      "title": "Esta compilação do Clipy Local tem edições incompatíveis",
+      "body": "A janela foi compilada para o Clipy Local, mas o aplicativo que a executa é {binary}. Compile novamente com pnpm tauri:build (ou pnpm tauri:dev) para que as duas partes sejam da mesma edição.",
+      "official": "o aplicativo oficial do {app}",
+      "older": "uma compilação antiga do {app}"
+    },
     "firstLaunchUpdate": {
       "title": "Baixando o Clipy mais recente",
       "body": "O Clipy {version} já saiu. Estamos baixando agora para você começar na versão mais nova.",
@@ -242,6 +248,7 @@
     "clipboardClash": "{app} também abre com {hotkey}, então pode receber a tecla no lugar do Clipy. Desinstale o {app} ou escolha outra tecla para Área de transferência em Atalhos.",
     "shortcutsHint": "Clique em um campo e pressione as teclas.",
     "localInfo": "As gravações locais e o contexto AREC delas ficam na pasta do Clipy neste {device} e são apagados após {days} dias, a menos que sejam mantidos. As gravações na nuvem mantêm uma cópia local só até o envio terminar.",
+    "localEditionInfo": "As gravações locais e o contexto AREC ficam na pasta do Clipy neste {device} e são apagados após {days} dias, a menos que você opte por mantê-los.",
     "localInfoWindows": "O Local AI transcreve o áudio no servidor do Clipy e o apaga de lá em seguida; o vídeo nunca sai deste PC.",
     "openArec": {
       "title": "Abrir o AREC quando estiver pronto",
@@ -560,6 +567,7 @@
     "startWithCountdown": "{label} ({seconds} s)",
     "starting": "Iniciando…",
     "openSite": "Abrir clipy.online",
+    "openLocalProject": "Abrir o projeto Clipy Local",
     "captureMode": "Modo de captura",
     "recordVideo": "Gravar vídeo",
     "takeScreenshot": "Fazer uma captura de tela",
@@ -584,6 +592,8 @@
       "local": "Local AI",
       "localShort": "Neste {device}",
       "localHint": "Salva o vídeo e o AREC neste {device}",
+      "localEditionShort": "Salvo neste {device}",
+      "localEditionHint": "O vídeo, o AREC e a transcrição são salvos neste {device}",
       "whatLocal": "O que o Local AI faz",
       "preferences": "Preferências de gravação"
     },
@@ -641,7 +651,8 @@
     "smaller": "Texto menor",
     "larger": "Texto maior",
     "hide": "Ocultar notas",
-    "placeholder": "Pontos para falar, links, aquilo que você sempre esquece de mencionar…"
+    "placeholder": "Pontos para falar, links, aquilo que você sempre esquece de mencionar…",
+    "privacyFooter": "Só você pode ver estas notas. Elas nunca aparecem na gravação."
   },
   "webcamControls": {
     "small": "Câmera pequena",
@@ -905,6 +916,7 @@
       "screenshotBusy": "Já há uma captura de tela aberta para anotação.",
       "screenshotFailed": "Falha na captura de tela: {error}",
       "screenshotNote": "Nada é enviado a menos que você clique em Upload",
+      "screenshotNoteLocal": "Nenhum dado sai deste computador",
       "annotatingOff": "A anotação está desativada",
       "annotatingOffBody": "As capturas de tela vão direto para a área de transferência. Ative “Anotar antes de copiar” para marcá-las antes.",
       "annotatingTurnOn": "Ativar anotação",
@@ -962,7 +974,8 @@
       "eyebrow": "Boas-vindas ao Clipy",
       "title": "Grave uma vez. Todo mundo consegue acompanhar, até seus agentes.",
       "start": "Começar",
-      "body": "Grave sua tela, câmera e voz, receba um link assim que parar e entregue a gravação ao Claude Code ou ao Codex como contexto legível. Vamos configurar tudo."
+      "body": "Grave sua tela, câmera e voz, receba um link assim que parar e entregue a gravação ao Claude Code ou ao Codex como contexto legível. Vamos configurar tudo.",
+      "bodyLocal": "Grave sua tela, câmera e voz. O vídeo fica neste {device}, e o Clipy gera uma transcrição e um AREC que agentes de IA como Claude Code, Codex ou Cursor podem ler. Vamos configurar o aplicativo."
     },
     "signIn": {
       "title": "Entre no Clipy",
@@ -1058,6 +1071,7 @@
     },
     "visuals": {
       "linkCopied": "Link copiado",
+      "arecSaved": "AREC salvo",
       "agentRead": "Seu agente leu",
       "settings": {
         "general": "Geral",

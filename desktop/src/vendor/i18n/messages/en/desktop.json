@@ -86,6 +86,12 @@
   },
   "app": {
     "loading": "Loading Clipy…",
+    "localEditionMismatch": {
+      "title": "This build of Clipy Local is mismatched",
+      "body": "Its window was built for Clipy Local, but the app around it is {binary}. Rebuild with pnpm tauri:build (or pnpm tauri:dev) so both halves come from the same edition.",
+      "official": "the official {app} app",
+      "older": "an older {app} build"
+    },
     "firstLaunchUpdate": {
       "title": "Getting the latest Clipy",
       "body": "Clipy {version} is out. Downloading it now so you start on the newest version.",
@@ -242,6 +248,7 @@
     "clipboardClash": "{app} also opens on {hotkey}, so it may get the key instead of Clipy. Uninstall {app}, or pick another key for Clipboard under Shortcuts.",
     "shortcutsHint": "Click a field and press the keys.",
     "localInfo": "Local recordings and their AREC context stay in Clipy's folder on this {device} and clear after {days} days unless kept. Cloud recordings keep a local copy only until the upload completes.",
+    "localEditionInfo": "Local recordings and their AREC context stay in Clipy's folder on this {device} and clear after {days} days unless kept.",
     "localInfoWindows": "Local AI transcribes the audio on Clipy's server and deletes it there afterwards; the video never leaves this PC.",
     "openArec": {
       "title": "Open the AREC when it's ready",
@@ -560,6 +567,7 @@
     "startWithCountdown": "{label} ({seconds}s)",
     "starting": "Starting…",
     "openSite": "Open clipy.online",
+    "openLocalProject": "Open the Clipy Local project",
     "captureMode": "Capture mode",
     "recordVideo": "Record video",
     "takeScreenshot": "Take a screenshot",
@@ -584,6 +592,8 @@
       "local": "Local AI",
       "localShort": "On this {device}",
       "localHint": "Save video and AREC on this {device}",
+      "localEditionShort": "Saved on this {device}",
+      "localEditionHint": "Video, AREC and transcript are saved on this {device}",
       "whatLocal": "What Local AI does",
       "preferences": "Recording preferences"
     },
@@ -641,7 +651,8 @@
     "smaller": "Smaller text",
     "larger": "Larger text",
     "hide": "Hide notes",
-    "placeholder": "Talking points, links, the thing you keep forgetting to mention…"
+    "placeholder": "Talking points, links, the thing you keep forgetting to mention…",
+    "privacyFooter": "Only you can see this. Never part of the recording."
   },
   "webcamControls": {
     "small": "Small camera",
@@ -905,6 +916,7 @@
       "screenshotBusy": "A screenshot is already open for annotating.",
       "screenshotFailed": "Screenshot failed: {error}",
       "screenshotNote": "Nothing is uploaded unless you press Upload",
+      "screenshotNoteLocal": "Nothing leaves this computer",
       "annotatingOff": "Annotating is switched off",
       "annotatingOffBody": "Screenshots go straight to the clipboard. Turn on “Annotate before copying” to mark them up first.",
       "annotatingTurnOn": "Turn on annotating",
@@ -962,7 +974,8 @@
       "eyebrow": "Welcome to Clipy",
       "title": "Record it once. Everyone can follow it, even your agents.",
       "start": "Get started",
-      "body": "Record your screen, camera and voice, get a link the moment you stop, and hand the recording to Claude Code or Codex as readable context. Let's get you set up."
+      "body": "Record your screen, camera and voice, get a link the moment you stop, and hand the recording to Claude Code or Codex as readable context. Let's get you set up.",
+      "bodyLocal": "Record your screen, camera and voice. The video stays on this {device}, and Clipy writes a transcript and an AREC that AI agents like Claude Code, Codex or Cursor can read. Let's get you set up."
     },
     "signIn": {
       "title": "Sign in to Clipy",
@@ -1058,6 +1071,7 @@
     },
     "visuals": {
       "linkCopied": "Link copied",
+      "arecSaved": "AREC saved",
       "agentRead": "Your agent read it",
       "settings": {
         "general": "General",

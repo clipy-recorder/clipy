@@ -86,6 +86,12 @@
   },
   "app": {
     "loading": "Clipy を読み込み中…",
+    "localEditionMismatch": {
+      "title": "Clipy Local のビルドが一致していません",
+      "body": "ウィンドウは Clipy Local 用にビルドされていますが、実行中のアプリは {binary} です。両方を同じエディションにそろえるには、pnpm tauri:build（または pnpm tauri:dev）で再ビルドしてください。",
+      "official": "公式の {app} アプリ",
+      "older": "旧バージョンの {app}"
+    },
     "firstLaunchUpdate": {
       "title": "最新の Clipy を取得しています",
       "body": "Clipy {version} が公開されています。最新バージョンで始められるよう、いまダウンロードしています。",
@@ -242,6 +248,7 @@
     "clipboardClash": "{app} も {hotkey} で開くため、Clipy ではなくそちらがキーを受け取る場合があります。{app} をアンインストールするか、ショートカットでクリップボード用に別のキーを選んでください。",
     "shortcutsHint": "フィールドをクリックしてキーを押してください。",
     "localInfo": "ローカル録画とその AREC コンテキストは、この {device} の Clipy フォルダーに保存され、保持しない場合は {days} 日後に削除されます。クラウド録画は、アップロードが終わるまでだけローカルにコピーを残します。",
+    "localEditionInfo": "ローカル録画とその AREC コンテキストは、この {device} の Clipy フォルダーに保存され、保持しない場合は {days} 日後に削除されます。",
     "localInfoWindows": "Local AI は音声を Clipy のサーバーで文字起こしし、その後サーバーから削除します。動画はこの PC から出ません。",
     "openArec": {
       "title": "AREC の準備ができたら開く",
@@ -560,6 +567,7 @@
     "startWithCountdown": "{label}（{seconds} 秒）",
     "starting": "開始中…",
     "openSite": "clipy.online を開く",
+    "openLocalProject": "Clipy Local のプロジェクトを開く",
     "captureMode": "キャプチャモード",
     "recordVideo": "動画を録画",
     "takeScreenshot": "スクリーンショットを撮る",
@@ -584,6 +592,8 @@
       "local": "Local AI",
       "localShort": "この {device} に保存",
       "localHint": "動画と AREC をこの {device} に保存します",
+      "localEditionShort": "この {device} に保存",
+      "localEditionHint": "動画、AREC、文字起こしはこの {device} に保存されます",
       "whatLocal": "Local AI でできること",
       "preferences": "録画の環境設定"
     },
@@ -641,7 +651,8 @@
     "smaller": "文字を小さく",
     "larger": "文字を大きく",
     "hide": "メモを隠す",
-    "placeholder": "話すポイント、リンク、いつも言い忘れるあのこと…"
+    "placeholder": "話すポイント、リンク、いつも言い忘れるあのこと…",
+    "privacyFooter": "このメモは自分にだけ表示されます。録画には映りません。"
   },
   "webcamControls": {
     "small": "カメラ（小）",
@@ -905,6 +916,7 @@
       "screenshotBusy": "注釈用のスクリーンショットがすでに開いています。",
       "screenshotFailed": "スクリーンショットに失敗しました：{error}",
       "screenshotNote": "［アップロード］を押さない限り、何もアップロードされません",
+      "screenshotNoteLocal": "このコンピューターからデータが送信されることはありません",
       "annotatingOff": "注釈はオフです",
       "annotatingOffBody": "スクリーンショットはそのままクリップボードにコピーされます。先にマークアップするには「コピー前に注釈を付ける」をオンにしてください。",
       "annotatingTurnOn": "注釈をオンにする",
@@ -962,7 +974,8 @@
       "eyebrow": "Clipy へようこそ",
       "title": "一度録画すれば、誰でも、エージェントでも理解できます。",
       "start": "はじめる",
-      "body": "画面、カメラ、声を録画すると、停止した瞬間にリンクが手に入り、録画を読める形のコンテキストとして Claude Code や Codex に渡せます。さっそくセットアップしましょう。"
+      "body": "画面、カメラ、声を録画すると、停止した瞬間にリンクが手に入り、録画を読める形のコンテキストとして Claude Code や Codex に渡せます。さっそくセットアップしましょう。",
+      "bodyLocal": "画面、カメラ、音声を録画できます。動画はこの {device} に保存され、Clipy が Claude Code、Codex、Cursor などの AI エージェントで読める文字起こしと AREC を作成します。セットアップを始めましょう。"
     },
     "signIn": {
       "title": "Clipy にサインイン",
@@ -1058,6 +1071,7 @@
     },
     "visuals": {
       "linkCopied": "リンクをコピーしました",
+      "arecSaved": "AREC を保存しました",
       "agentRead": "エージェントが読み取りました",
       "settings": {
         "general": "一般",

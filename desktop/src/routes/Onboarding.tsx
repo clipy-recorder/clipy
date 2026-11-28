@@ -691,7 +691,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       }
     >
       {LOCAL_EDITION
-        ? `Record your screen, camera and voice. The video stays on this ${deviceName}, and Clipy writes a transcript and an AREC that AI agents like Claude Code, Codex or Cursor can read. Let's get you set up.`
+        ? t("onboarding.welcome.bodyLocal", { device: deviceName })
         : t("onboarding.welcome.body")}
     </StepLayout>
   );
@@ -1235,7 +1235,11 @@ function DoneStep({
         </span>
         <p>
           {!blocked
-            ? t(LOCAL_EDITION ? "onboarding.done.readyLocal" : "onboarding.done.ready")
+            ? t(
+                LOCAL_EDITION
+                  ? "onboarding.done.readyLocal"
+                  : "onboarding.done.ready",
+              )
             : missingRow
               ? t("onboarding.done.missing")
               : isMacOS
@@ -1353,8 +1357,12 @@ function WelcomeVisual() {
         </div>
       </div>
       <div className="onb-float absolute right-8 top-9 rounded-lg border border-subtle bg-surface px-3 py-2 shadow-pop">
-        <p className="text-[11px] font-semibold text-ink-text">{LOCAL_EDITION ? "AREC saved" : t("onboarding.visuals.linkCopied")}</p>
-        <p className="text-[11px] text-ink-secondary">{LOCAL_EDITION ? "recording.arec" : "clipy.online/video/…"}</p>
+        <p className="text-[11px] font-semibold text-ink-text">{LOCAL_EDITION ? t("onboarding.visuals.arecSaved") : t("onboarding.visuals.linkCopied")}</p>
+        <p className="text-[11px] text-ink-secondary">
+          {LOCAL_EDITION
+            ? "recording.arec"
+            : "clipy.online/video/…"}
+        </p>
       </div>
       <div className="onb-float-delayed absolute bottom-8 right-10 flex items-center gap-2 rounded-lg border border-subtle bg-surface px-3 py-2 shadow-pop">
         <span className="flex h-5 w-5 items-center justify-center rounded-md bg-ink-950 text-[11px] font-bold text-white">{">_"}</span>
