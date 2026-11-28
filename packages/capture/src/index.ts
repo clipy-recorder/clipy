@@ -15,7 +15,7 @@
  * playable file.
  */
 import { checkCapture as check } from "./check.js";
-import { listSources as list } from "./sources.js";
+import { listMicrophones as listMics, listSources as list } from "./sources.js";
 import type { CaptureCheck, CaptureSource, Platform } from "./types.js";
 
 export type {
@@ -42,6 +42,15 @@ export function checkCapture(platform?: Platform): Promise<CaptureCheck> {
 /** Linux: pass `{ xDisplay }` to list a display other than $DISPLAY. */
 export function listSources(platform?: Platform, opts?: { xDisplay?: string }): Promise<CaptureSource[]> {
   return list(platform, opts);
+}
+
+/**
+ * Microphone names that `startCapture({ microphone })` accepts:
+ * avfoundation audio devices on macOS, dshow audio devices on Windows,
+ * PulseAudio sources (or ALSA's "default") on Linux.
+ */
+export function listMicrophones(platform?: Platform): Promise<string[]> {
+  return listMics(platform);
 }
 
 // Lower-level pieces, for tools that build their own command lines.

@@ -3,10 +3,12 @@ import type { Runner, RunResult } from "../src/proc.js";
 import { FAKE_FFMPEG } from "./fakeTools.js";
 import {
   avfoundationScreens,
+  listMicrophones,
   listSources,
   parseAvfoundationDevices,
   parseClientList,
   parseDshowAudioDevices,
+  parsePactlSources,
   parseProbedScreenSize,
   parseScreensLine,
   parseSourceId,
@@ -204,5 +206,56 @@ describe("listSources", () => {
 
   it("still offers the main display on Windows when PowerShell is missing", async () => {
     expect(await listSources("win32", { env, run: fakeRunner({}) })).toEqual([{ id: "display:0", kind: "display", name: "Display 1 (main)" }]);
+  });
+});
+
+const PACTL_SOURCES = [
+  "0\talsa_output.pci-0000_00_1f.3.analog-stereo.monitor\tmodule-alsa-card.c\ts16le 2ch 44100Hz\tSUSPENDED",
+  "1\talsa_input.pci-0000_00_1f.3.analog-stereo\tmodule-alsa-card.c\ts16le 2ch 44100Hz\tRUNNING",
+  "2\tbluez_input.00_1B_66_AA_BB_CC.0\tmodule-bluez5-device.c\ts16le 1ch 16000Hz\tIDLE",
+  "",
+].join("\n");
+
+describe("parsePactlSources", () => {
+  it("reads source names and skips the .monitor sources of outputs", () => {
+    expect(parsePactlSources(PACTL_SOURCES)).toEqual(["alsa_input.pci-0000_00_1f.3.analog-stereo", "bluez_input.00_1B_66_AA_BB_CC.0"]);
+  });
+
+  it("copes with CRLF, blank lines and junk", () => {
+    expect(parsePactlSources("\r\nnot a source line\r\n3\tmic\tmodule\tspec\tIDLE\r\n")).toEqual(["mic"]);
+  });
+});
+
+describe("listMicrophones", () => {
+  const env = { ...process.env, CLIPY_FFMPEG: FAKE_FFMPEG, PATH: process.env.PATH };
+
+  it("lists macOS microphones from the avfoundation audio devices", async () => {
+    const mics = await listMicrophones("darwin", { env, run: fakeRunner({ ffmpeg: { status: 1, stderr: AVFOUNDATION } }) });
+    expect(mics).toEqual(["MacBook Pro Microphone", "ZoomAudioDevice"]);
+  });
+
+  it("lists Windows microphones from dshow, new and legacy formats", async () => {
+    expect(await listMicrophones("win32", { env, run: fakeRunner({ ffmpeg: { status: 1, stderr: DSHOW_NEW } }) })).toEqual([
+      "Microphone Array (Realtek(R) Audio)",
+      "Headset (Jabra Evolve2 65)",
+    ]);
+    expect(await listMicrophones("win32", { env, run: fakeRunner({ ffmpeg: { status: 1, stderr: DSHOW_LEGACY } }) })).toEqual(["Microphone (USB Audio)"]);
+  });
+
+  it("lists PulseAudio sources on Linux, without monitors", async () => {
+    const mics = await listMicrophones("linux", { env, run: fakeRunner({ pactl: { stdout: PACTL_SOURCES } }) });
+    expect(mics).toEqual(["alsa_input.pci-0000_00_1f.3.analog-stereo", "bluez_input.00_1B_66_AA_BB_CC.0"]);
+  });
+
+  it("falls back to ALSA's default on Linux without pactl or with only monitors", async () => {
+    expect(await listMicrophones("linux", { env, run: fakeRunner({}) })).toEqual(["default"]);
+    const onlyMonitor = "0\talsa_output.analog-stereo.monitor\tmodule-alsa-card.c\ts16le 2ch 44100Hz\tIDLE\n";
+    expect(await listMicrophones("linux", { env, run: fakeRunner({ pactl: { stdout: onlyMonitor } }) })).toEqual(["default"]);
+  });
+
+  it("returns nothing on macOS and Windows when ffmpeg cannot be found", async () => {
+    const noFfmpeg = { PATH: "" };
+    expect(await listMicrophones("darwin", { env: noFfmpeg, run: fakeRunner({}) })).toEqual([]);
+    expect(await listMicrophones("win32", { env: noFfmpeg, run: fakeRunner({}) })).toEqual([]);
   });
 });
