@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseSilencedetectOutput, type SilenceSpan } from "./chunking.js";
+import type { AudioTrack } from "./types.js";
 
 /** Every engine gets the same audio: 16 kHz, mono, 16-bit PCM WAV. */
 export const SAMPLE_RATE = 16_000;
@@ -107,8 +108,45 @@ export async function probeMedia(inputPath: string, signal?: AbortSignal): Promi
   return { durationSec: times.length > 0 ? Number(times[times.length - 1][1]) / 1e6 : null, hasAudio };
 }
 
-/** ffmpeg: any video/audio file -> 16 kHz mono 16-bit WAV. Throws a clear error if ffmpeg is missing. */
-export async function extractAudio(inputPath: string, outWavPath: string, signal?: AbortSignal): Promise<void> {
+/** How many audio streams the file has, from ffmpeg's header dump. */
+export async function countAudioTracks(inputPath: string, signal?: AbortSignal): Promise<number> {
+  const header = await runFfmpeg(["-hide_banner", "-nostdin", "-i", ffmpegInput(inputPath)], signal, 64 * 1024);
+  const streams = header.stderr.match(/Stream #\d+:\d+[^\n]*: Audio:/g) ?? [];
+  if (streams.length === 0 && /No such file|Invalid data found|Permission denied|Error opening input/i.test(header.stderr)) {
+    throw new Error(`ffmpeg could not read ${inputPath}`);
+  }
+  return streams.length;
+}
+
+/**
+ * ffmpeg arguments that pick `track` from a file with `audioTracks` audio
+ * streams: `-map 0:a:N` for one track, or an amix of every track. The mix
+ * keeps each track's level (normalize=0), so speech is not turned down by
+ * the number of tracks, and runs as long as the longest track.
+ */
+export function audioTrackArgs(inputPath: string, track: AudioTrack, audioTracks: number): string[] {
+  if (track !== "mix" && !(Number.isInteger(track) && track >= 0)) {
+    throw new Error(`audioTrack must be a whole number from 0, or "mix" (got ${String(track)})`);
+  }
+  if (audioTracks === 0) throw new NoAudioTrackError(inputPath);
+  if (track === "mix") {
+    if (audioTracks === 1) return ["-map", "0:a:0"];
+    const inputs = Array.from({ length: audioTracks }, (_, i) => `[0:a:${i}]`).join("");
+    return ["-filter_complex", `${inputs}amix=inputs=${audioTracks}:duration=longest:normalize=0[mix]`, "-map", "[mix]"];
+  }
+  if (track >= audioTracks) {
+    const has = `${audioTracks} audio track${audioTracks === 1 ? "" : "s"}`;
+    throw new Error(`${inputPath} has ${has}, so there is no audio track ${track} (tracks are numbered from 0)`);
+  }
+  return ["-map", `0:a:${track}`];
+}
+
+/**
+ * ffmpeg: any video/audio file -> 16 kHz mono 16-bit WAV. Throws a clear error if ffmpeg is missing.
+ * `track` picks one audio track or mixes them all; unset, ffmpeg picks one by its own rule.
+ */
+export async function extractAudio(inputPath: string, outWavPath: string, signal?: AbortSignal, track?: AudioTrack): Promise<void> {
+  const select = track === undefined ? [] : audioTrackArgs(inputPath, track, await countAudioTracks(inputPath, signal));
   const { code, stderr } = await runFfmpeg(
     [
       "-hide_banner",
@@ -116,6 +154,7 @@ export async function extractAudio(inputPath: string, outWavPath: string, signal
       "-y",
       "-i",
       ffmpegInput(inputPath),
+      ...select,
       "-vn",
       "-map_metadata",
       "-1",

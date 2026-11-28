@@ -42,6 +42,14 @@ export interface TranscribeResult {
   gaps: TranscriptGap[];
 }
 
+/**
+ * Which audio of a file to transcribe when it has more than one audio track
+ * (a recording that keeps the microphone and the system sound apart): one
+ * track by its index among the audio tracks, from 0, or "mix" for every
+ * audio track mixed together.
+ */
+export type AudioTrack = number | "mix";
+
 export interface TranscribeProgress {
   stage: "extract" | "download" | "transcribe";
   fraction: number;
@@ -51,6 +59,12 @@ export interface TranscribeOptions {
   signal?: AbortSignal;
   modelDir?: string;
   onProgress?: (p: TranscribeProgress) => void;
+  /**
+   * The audio track to transcribe, or "mix" for all of them. Unset, ffmpeg
+   * picks one track by its own rule (the one with the most channels), which
+   * can be a system-sound track rather than the speech.
+   */
+  audioTrack?: AudioTrack;
   /**
    * Path of the sherpa-onnx-node entry file for on-device transcription. The
    * engine is not a dependency of this package: the host installs it (the CLI
