@@ -130,6 +130,13 @@ pub(crate) fn slice_utf16(s: &str, n: usize) -> String {
     String::from_utf16_lossy(&units)
 }
 
+/// `s.slice(0, n)` as UTF-16 code units. Unlike [`slice_utf16`], a cut through
+/// a surrogate pair keeps the lone half, so the result compares like the
+/// JavaScript string does.
+pub(crate) fn slice_utf16_units(s: &str, n: usize) -> Vec<u16> {
+    s.encode_utf16().take(n).collect()
+}
+
 /// The `\s` class of JavaScript regular expressions, which `String.prototype.trim` also uses.
 pub(crate) fn is_space(c: char) -> bool {
     matches!(
@@ -312,6 +319,11 @@ mod tests {
         assert_eq!(slice_utf16("ab\u{1F600}c", 3), "ab\u{FFFD}");
         assert_eq!(slice_utf16("ab\u{1F600}c", 4), "ab\u{1F600}");
         assert_eq!(utf16_len("\u{1F600}"), 2);
+        assert_eq!(slice_utf16_units("a\u{1F600}", 2), vec![0x61, 0xD83D]);
+        assert_ne!(
+            slice_utf16_units("a\u{1F600}", 2),
+            slice_utf16_units("a\u{1F9ED}", 2)
+        );
         assert_eq!(trim("\u{FEFF} a \u{2028}"), "a");
         assert_eq!(trim("\u{85}a"), "\u{85}a"); // NEL is not JavaScript whitespace
         assert_eq!(collapse_spaces(" a \n\t b "), " a b ");

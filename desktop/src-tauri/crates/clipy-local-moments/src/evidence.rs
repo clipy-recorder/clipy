@@ -498,31 +498,33 @@ pub(crate) fn normalize_click(
 
 struct Label {
     time_ms: f64,
-    label: Option<String>,
+    /// Kept as UTF-16 units: a cut through an emoji leaves a different lone
+    /// surrogate for each emoji, and U+FFFD would make those labels equal.
+    units: Option<Vec<u16>>,
 }
 
 fn parse_click_elements(elements: &[ClickElement]) -> Vec<Label> {
     elements
         .iter()
         .map(|e| {
-            let label = e
+            let units = e
                 .label
                 .as_deref()
-                .map(|l| js::slice_utf16(js::trim(&js::collapse_spaces(l)), 80))
-                .filter(|l| !l.is_empty());
+                .map(|l| js::slice_utf16_units(js::trim(&js::collapse_spaces(l)), 80))
+                .filter(|u| !u.is_empty());
             Label {
                 time_ms: e.time_ms,
-                label,
+                units,
             }
         })
         .collect()
 }
 
-fn click_label_at(elements: &[Label], t_ms: f64) -> Option<String> {
+fn click_label_at(elements: &[Label], t_ms: f64) -> Option<&[u16]> {
     elements
         .iter()
-        .find(|e| (e.time_ms - t_ms).abs() <= 50.0 && e.label.is_some())
-        .and_then(|e| e.label.clone())
+        .find(|e| (e.time_ms - t_ms).abs() <= 50.0 && e.units.is_some())
+        .and_then(|e| e.units.as_deref())
 }
 
 fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<ClickCluster> {
@@ -533,11 +535,13 @@ fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<Click
         .collect();
     sort_by_time(&mut downs);
     let mut clusters: Vec<ClickCluster> = Vec::new();
+    // Compare labels as units, not as the lossy strings (see `Label::units`).
+    let mut last_units: Option<&[u16]> = None;
     for event in downs {
         let (x, y) = (event.x.unwrap_or(0.0), event.y.unwrap_or(0.0));
-        let label = click_label_at(elements, event.time_ms);
+        let units = click_label_at(elements, event.time_ms);
         if let Some(last) = clusters.last_mut() {
-            let same_label = match (&label, &last.label) {
+            let same_label = match (units, last_units) {
                 (Some(a), Some(b)) => a == b,
                 _ => true,
             };
@@ -554,8 +558,9 @@ fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<Click
             x,
             y,
             count: 1,
-            label,
+            label: units.map(String::from_utf16_lossy),
         });
+        last_units = units;
     }
     clusters
 }

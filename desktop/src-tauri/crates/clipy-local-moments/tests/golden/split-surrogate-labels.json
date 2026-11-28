@@ -1,0 +1,55 @@
+{
+  "name": "split-surrogate-labels",
+  "description": "Two nearby clicks whose labels differ only in the emoji the 80-unit cut splits.",
+  "input": {
+    "schemaVersion": 2,
+    "durationMs": 1000,
+    "transcript": [],
+    "interactions": [
+      {
+        "kind": "down",
+        "time_ms": 100,
+        "x": 1,
+        "y": 1,
+        "button": 1
+      },
+      {
+        "kind": "down",
+        "time_ms": 200,
+        "x": 1,
+        "y": 1,
+        "button": 1
+      }
+    ],
+    "clickElements": [
+      {
+        "time_ms": 100,
+        "role": "AXButton",
+        "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀"
+      },
+      {
+        "time_ms": 200,
+        "role": "AXButton",
+        "label": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa🧭"
+      }
+    ],
+    "interactionSelection": "bounded sample; full stream retained locally"
+  },
+  "rules": {
+    "planner": "rules",
+    "moments": [
+      {
+        "timestamp_ms": 100,
+        "frame_at_ms": 100,
+        "reason": "Clicks 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�' (no narration at this moment)",
+        "source": "click"
+      },
+      {
+        "timestamp_ms": 200,
+        "frame_at_ms": 200,
+        "reason": "Clicks 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa�' (no narration at this moment)",
+        "source": "click"
+      }
+    ]
+  }
+}

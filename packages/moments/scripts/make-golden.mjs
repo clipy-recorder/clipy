@@ -454,6 +454,19 @@ const cases = [];
   });
 }
 
+// 13. Two labels cut to 80 units through different emoji. JavaScript keeps the
+// two different lone surrogates, so the clicks stay apart.
+{
+  const r = recorder().at(1, 1);
+  r.click(100, `${"a".repeat(79)}\u{1F600}`, "AXButton", { up: false });
+  r.click(200, `${"a".repeat(79)}\u{1F9ED}`, "AXButton", { up: false });
+  cases.push({
+    name: "split-surrogate-labels",
+    description: "Two nearby clicks whose labels differ only in the emoji the 80-unit cut splits.",
+    input: input({ durationMs: 1000, ...r.done() }),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Running.
 
