@@ -13,10 +13,17 @@ export class ProviderError extends Error {
       msg = `${provider} transcription failed: ${detail ?? "the provider could not be reached"}`;
     } else {
       msg = `${provider} transcription failed (HTTP ${status})`;
-      if (status === 401 || status === 403) msg += ": check the API key";
-      else if (status === 413) msg += ": the audio is too large for this provider";
-      else if (status === 429) msg += ": rate limited, try again later";
-      else if (detail) msg += `: ${detail}`;
+      if (status === 401 || status === 403) {
+        msg += ": check the API key";
+      } else if (status === 404) {
+        msg += ": endpoint or model not found; check the base URL and model name";
+      } else if (status === 413) {
+        msg += ": the audio is too large for this provider";
+      } else if (status === 429) {
+        msg += ": rate limited, try again later";
+      } else if (detail) {
+        msg += `: ${detail}`;
+      }
     }
     super(msg);
     this.name = "ProviderError";

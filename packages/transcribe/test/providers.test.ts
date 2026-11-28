@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 /** A failing provider: errors name provider and status, never the key or the body. */
-async function expectSafeError(p: Promise<unknown>, provider: string, status: number) {
+async function expectSafeError(p: Promise<unknown>, provider: string, status: number): Promise<ProviderError> {
   const err = await p.then(
     () => null,
     (e: unknown) => e,
@@ -34,6 +34,7 @@ async function expectSafeError(p: Promise<unknown>, provider: string, status: nu
   expect(msg).not.toContain(KEY);
   expect(msg).not.toContain(SECRET_TEXT);
   expect((err as ProviderError).status).toBe(status);
+  return err as ProviderError;
 }
 
 describe("openai-compatible", () => {
@@ -284,6 +285,16 @@ describe("elevenlabs", () => {
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { detail: SECRET_TEXT }, 422));
     await expectSafeError(transcribeElevenLabs(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "elevenlabs", 422);
+  });
+
+  it("reports HTTP 404 errors without the key or body", async () => {
+    server = await fakeServer((_req, res) => json(res, { detail: SECRET_TEXT }, 404));
+    const err = await expectSafeError(
+      transcribeElevenLabs(await audioInput(1), { apiKey: KEY, baseUrl: server.url }),
+      "elevenlabs",
+      404,
+    );
+    expect(err.message).toContain("endpoint or model not found; check the base URL and model name");
   });
 });
 
