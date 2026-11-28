@@ -84,7 +84,7 @@ export function samplesToEvents(samples: readonly PointerSample[], startedAt: nu
         events.push({ kind: "move", time_ms: 0, x: preStart.x, y: preStart.y });
         buttons = preStart.buttons;
       } else {
-        buttons = s.buttons;
+        buttons = 0;
       }
     }
     const time = Math.round(s.t - startedAt);

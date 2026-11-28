@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { detectSilences, extractAudio, readWavInfo, readWavSlice } from "../src/audio.js";
+import { detectSilences, extractAudio, readWavInfo, readWavSlice, wavFromPcm } from "../src/audio.js";
 import { transcribe } from "../src/index.js";
 import { tempDir } from "./helpers.js";
 
@@ -46,6 +46,14 @@ describe("extractAudio", () => {
     expect(info.durationSec).toBeLessThan(3.2);
     const slice = await readWavSlice(out, info, 1, 0.5);
     expect(slice.readUInt32LE(40)).toBe(16000);
+  });
+
+  it("preserves channels and bit depth in wavFromPcm", () => {
+    const pcm = Buffer.alloc(48);
+    const wav = wavFromPcm(pcm, 44100, 2, 24);
+    expect(wav.readUInt16LE(22)).toBe(2);
+    expect(wav.readUInt32LE(24)).toBe(44100);
+    expect(wav.readUInt16LE(34)).toBe(24);
   });
 
   it("says clearly when ffmpeg is missing", async () => {

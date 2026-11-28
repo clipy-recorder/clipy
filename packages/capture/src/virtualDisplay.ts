@@ -118,8 +118,9 @@ export async function startVirtualDisplay(opts: { width?: number; height?: numbe
 
   // Two starts can race for the same free number; Xvfb then exits at once
   // and the next number is tried.
+  const baseDisplay = freeDisplayNumber();
   for (let attempt = 0; attempt < 5; attempt++) {
-    const n = freeDisplayNumber() + attempt;
+    const n = baseDisplay + attempt;
     const display = `:${n}`;
     const warnings: string[] = [];
     const auth = xauthPath ? writeAuthority(xauthPath, display) : null;
