@@ -21,6 +21,26 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.filter.outputs.desktop }}
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: filter
+        name: Check if desktop CI is needed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/ci-path-filter.mjs
+
   packages:
     name: Packages (Linux)
     runs-on: ubuntu-24.04
@@ -53,6 +73,8 @@ jobs:
     name: Clipy Local (macOS)
     runs-on: macos-15
     timeout-minutes: 60
+    needs: [changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     defaults:
       run:
         working-directory: desktop
@@ -114,6 +136,8 @@ jobs:
     name: Clipy Local (Windows compile)
     runs-on: windows-latest
     timeout-minutes: 60
+    needs: [changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.desktop == 'true'
     defaults:
       run:
         shell: pwsh

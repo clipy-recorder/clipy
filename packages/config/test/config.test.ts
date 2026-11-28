@@ -232,6 +232,41 @@ describe("transcription presets", () => {
     });
   });
 
+  it("rejects a base URL when transcription is deepgram in env, without leaking the key (Issue #9)", () => {
+    const secretKey = "dg-secret-key-123456789";
+    const err = errorOf(() =>
+      loadConfig({
+        ...env,
+        CLIPY_TRANSCRIBE: "deepgram",
+        CLIPY_TRANSCRIBE_API_KEY: secretKey,
+        CLIPY_TRANSCRIBE_BASE_URL: "https://custom.endpoint.com/v1",
+      }),
+    );
+    expect(err).toBeInstanceOf(ConfigError);
+    expect(err.message).toContain("CLIPY_TRANSCRIBE_BASE_URL");
+    expect(err.message).toContain("deepgram");
+    expect(err.message).not.toContain(secretKey);
+  });
+
+  it("rejects a base URL when transcription is deepgram or local in saved file (Issue #17)", () => {
+    saveConfig({ transcription: { kind: "deepgram", apiKey: "dg-saved-key" } }, env);
+    const errDeepgram = errorOf(() =>
+      loadConfig({ ...env, CLIPY_TRANSCRIBE_BASE_URL: "https://custom.endpoint.com/v1" }),
+    );
+    expect(errDeepgram).toBeInstanceOf(ConfigError);
+    expect(errDeepgram.message).toContain("CLIPY_TRANSCRIBE_BASE_URL");
+    expect(errDeepgram.message).toContain("deepgram");
+    expect(errDeepgram.message).not.toContain("dg-saved-key");
+
+    saveConfig({ transcription: { kind: "local" } }, env);
+    const errLocal = errorOf(() =>
+      loadConfig({ ...env, CLIPY_TRANSCRIBE_BASE_URL: "https://custom.endpoint.com/v1" }),
+    );
+    expect(errLocal).toBeInstanceOf(ConfigError);
+    expect(errLocal.message).toContain("CLIPY_TRANSCRIBE_BASE_URL");
+    expect(errLocal.message).toContain("local");
+  });
+
   it("picks the multilingual local model", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
@@ -306,5 +341,21 @@ describe("a malformed file", () => {
     writeConfig("{ broken");
     expect(errorOf(() => saveConfig({ transcription: { kind: "none" } }, env)).message).toMatch(/not valid JSON/);
     expect(readFileSync(file, "utf8")).toBe("{ broken");
+  });
+
+  it("loads and saves config files saved with a UTF-8 byte order mark (Issue #19)", () => {
+    writeConfig('\uFEFF{\n  "version": 1,\n  "transcription": { "kind": "none" }\n}');
+    const loaded = loadConfig(env);
+    expect(loaded.transcription).toEqual({ kind: "none" });
+
+    saveConfig({ transcription: { kind: "local", model: "english-fast" } }, env);
+    const updated = loadConfig(env);
+    expect(updated.transcription).toEqual({ kind: "local", model: "english-fast" });
+  });
+
+  it("reports the correct line and column on a BOM-prefixed malformed file (Issue #19)", () => {
+    writeConfig('\uFEFF{\n  "model": { "preset": "openai" ,, }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toMatch(/not valid JSON at line 2, column \d+/);
   });
 });

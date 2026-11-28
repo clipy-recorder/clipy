@@ -4,6 +4,7 @@
   "version": "1.1.85",
   "type": "module",
   "scripts": {
+    "test": "node --test test/*.test.ts scripts/desktop-packaging.test.mjs",
     "dev": "vite --mode oss",
     "build": "tsc --noEmit && vite build --mode oss",
     "preview": "vite preview",

@@ -1265,6 +1265,288 @@ mod tests {
     }
 
     #[test]
+    fn settings_round_trip_all_presets_and_providers() {
+        let presets_and_urls = [
+            (ModelPreset::None, None, None, false),
+            (ModelPreset::OpenRouter, Some("google/gemini-flash"), None, true),
+            (ModelPreset::OpenAi, Some("gpt-4o-mini"), None, true),
+            (ModelPreset::Gemini, Some("gemini-2.5-flash"), None, true),
+            (ModelPreset::Groq, Some("llama-3.3-70b-versatile"), None, true),
+            (ModelPreset::Ollama, Some("llama3"), Some("http://127.0.0.1:11434/v1"), false),
+            (ModelPreset::LmStudio, Some("local-model"), Some("http://127.0.0.1:1234/v1"), false),
+            (ModelPreset::Custom, Some("custom-model"), Some("https://api.example.com/v1"), true),
+        ];
+
+        let mut current_settings = StoredSettings::defaults(Platform::Windows);
+        let mut current_keys = KeyFile::default();
+
+        for (preset, model, base_url, needs_key) in presets_and_urls {
+            let req = SaveLocalSettingsRequest {
+                model: Some(SaveModelSettings {
+                    preset,
+                    model: model.map(str::to_string),
+                    base_url: base_url.map(str::to_string),
+                    api_key: if needs_key {
+                        KeyUpdate::Set {
+                            value: "test-secret-key-123".to_string(),
+                        }
+                    } else {
+                        KeyUpdate::Keep
+                    },
+                }),
+                transcription: None,
+            };
+
+            let (next_settings, next_keys) =
+                apply_save(&current_settings, &current_keys, &req, Platform::Windows).unwrap();
+
+            let dto = to_dto(&next_settings, &next_keys);
+            assert_eq!(dto.model.preset, preset);
+            assert_eq!(dto.model.model.as_deref(), model);
+            assert_eq!(dto.model.has_api_key, needs_key);
+
+            let stored_value = next_settings.to_value();
+            let json_str = serde_json::to_string(&stored_value).unwrap();
+            let parsed_value: Value = serde_json::from_str(&json_str).unwrap();
+            let reloaded_settings =
+                StoredSettings::from_value(Some(&parsed_value), Platform::Windows);
+            assert_eq!(reloaded_settings, next_settings);
+
+            let key_bytes = next_keys.to_bytes();
+            let reloaded_keys = KeyFile::from_bytes(Some(&key_bytes));
+            assert_eq!(reloaded_keys, next_keys);
+
+            let reloaded_dto = to_dto(&reloaded_settings, &reloaded_keys);
+            assert_eq!(reloaded_dto, dto);
+
+            let keep_req = SaveLocalSettingsRequest {
+                model: Some(SaveModelSettings {
+                    preset,
+                    model: model.map(str::to_string),
+                    base_url: base_url.map(str::to_string),
+                    api_key: KeyUpdate::Keep,
+                }),
+                transcription: None,
+            };
+            let (kept_settings, kept_keys) =
+                apply_save(&next_settings, &next_keys, &keep_req, Platform::Windows).unwrap();
+            assert_eq!(to_dto(&kept_settings, &kept_keys).model.has_api_key, needs_key);
+
+            if needs_key {
+                let clear_req = SaveLocalSettingsRequest {
+                    model: Some(SaveModelSettings {
+                        preset,
+                        model: model.map(str::to_string),
+                        base_url: base_url.map(str::to_string),
+                        api_key: KeyUpdate::Clear,
+                    }),
+                    transcription: None,
+                };
+                let (cleared_settings, cleared_keys) =
+                    apply_save(&kept_settings, &kept_keys, &clear_req, Platform::Windows).unwrap();
+                assert!(!to_dto(&cleared_settings, &cleared_keys).model.has_api_key);
+            }
+
+            current_settings = next_settings;
+            current_keys = next_keys;
+        }
+
+        let kinds_windows = [
+            (TranscriptionKind::None, None, false),
+            (TranscriptionKind::Local, Some(LocalModelId::EnglishFast), false),
+            (TranscriptionKind::Local, Some(LocalModelId::Multilingual), false),
+            (TranscriptionKind::OpenAi, None, true),
+            (TranscriptionKind::Groq, None, true),
+            (TranscriptionKind::Deepgram, None, true),
+            (TranscriptionKind::AssemblyAi, None, true),
+            (TranscriptionKind::ElevenLabs, None, true),
+            (TranscriptionKind::Gemini, None, true),
+        ];
+
+        for (kind, local_model, needs_key) in kinds_windows {
+            let req = SaveLocalSettingsRequest {
+                model: None,
+                transcription: Some(SaveTranscriptionSettings {
+                    kind,
+                    local_model,
+                    model: if needs_key {
+                        Some("whisper-1".into())
+                    } else {
+                        None
+                    },
+                    api_key: if needs_key {
+                        KeyUpdate::Set {
+                            value: "test-stt-key-456".to_string(),
+                        }
+                    } else {
+                        KeyUpdate::Keep
+                    },
+                }),
+            };
+
+            let (next_settings, next_keys) =
+                apply_save(&current_settings, &current_keys, &req, Platform::Windows).unwrap();
+
+            let dto = to_dto(&next_settings, &next_keys);
+            assert_eq!(dto.transcription.kind, kind);
+            assert_eq!(dto.transcription.local_model, local_model);
+            assert_eq!(dto.transcription.has_api_key, needs_key);
+
+            let stored_value = next_settings.to_value();
+            let json_str = serde_json::to_string(&stored_value).unwrap();
+            let parsed_value: Value = serde_json::from_str(&json_str).unwrap();
+            let reloaded_settings =
+                StoredSettings::from_value(Some(&parsed_value), Platform::Windows);
+            assert_eq!(reloaded_settings, next_settings);
+
+            let key_bytes = next_keys.to_bytes();
+            let reloaded_keys = KeyFile::from_bytes(Some(&key_bytes));
+            assert_eq!(reloaded_keys, next_keys);
+
+            assert_eq!(to_dto(&reloaded_settings, &reloaded_keys), dto);
+
+            current_settings = next_settings;
+            current_keys = next_keys;
+        }
+
+        let mac_settings = StoredSettings::defaults(Platform::Mac);
+        let mac_keys = KeyFile::default();
+        let mac_req = SaveLocalSettingsRequest {
+            model: None,
+            transcription: Some(SaveTranscriptionSettings {
+                kind: TranscriptionKind::Apple,
+                local_model: None,
+                model: None,
+                api_key: KeyUpdate::Keep,
+            }),
+        };
+        let (next_mac, next_mac_keys) =
+            apply_save(&mac_settings, &mac_keys, &mac_req, Platform::Mac).unwrap();
+        assert_eq!(
+            to_dto(&next_mac, &next_mac_keys).transcription.kind,
+            TranscriptionKind::Apple
+        );
+        let reloaded_mac = StoredSettings::from_value(Some(&next_mac.to_value()), Platform::Mac);
+        assert_eq!(reloaded_mac, next_mac);
+    }
+
+    #[test]
+    fn settings_full_round_trip() {
+        let base = windows();
+        let keys = KeyFile::default();
+
+        // 1. Model presets round-trip across save -> DTO -> disk serialize -> reload
+        let model_cases = [
+            ("none", None, None, false),
+            ("openai", Some("gpt-4o"), Some("https://api.openai.com/v1"), true),
+            ("openrouter", Some("anthropic/claude-3-opus"), None, true),
+            ("gemini", Some("gemini-2.5-flash"), None, true),
+            ("groq", Some("llama-3.3-70b-versatile"), None, true),
+            ("ollama", Some("llama3"), Some("http://127.0.0.1:11434/v1"), false),
+            ("lmstudio", Some("qwen2.5-coder"), Some("http://127.0.0.1:1234/v1"), false),
+            ("custom", Some("custom-model"), Some("https://example.com/v1"), true),
+        ];
+
+        for (preset_str, model_opt, url_opt, has_key) in model_cases {
+            let key_update = if has_key {
+                json!({"action": "set", "value": "test-key-123"})
+            } else {
+                json!({"action": "clear"})
+            };
+            let req = save(json!({
+                "model": {
+                    "preset": preset_str,
+                    "model": model_opt,
+                    "baseUrl": url_opt,
+                    "apiKey": key_update
+                }
+            }));
+            let (next_settings, next_keys) = apply_save(&base, &keys, &req, Platform::Windows).unwrap();
+            let dto = to_dto(&next_settings, &next_keys);
+            assert_eq!(serde_json::to_value(dto.model.preset).unwrap(), json!(preset_str));
+            assert_eq!(dto.model.has_api_key, has_key);
+
+            // Round trip StoredSettings through JSON Value and string
+            let json_str = serde_json::to_string(&next_settings.to_value()).unwrap();
+            let parsed_val: Value = serde_json::from_str(&json_str).unwrap();
+            let reloaded_settings = StoredSettings::from_value(Some(&parsed_val), Platform::Windows);
+            assert_eq!(reloaded_settings, next_settings);
+
+            // Round trip KeyFile through bytes
+            let key_bytes = next_keys.to_bytes();
+            let reloaded_keys = KeyFile::from_bytes(Some(&key_bytes));
+            assert_eq!(reloaded_keys, next_keys);
+
+            // Recomputed DTO matches
+            let reloaded_dto = to_dto(&reloaded_settings, &reloaded_keys);
+            assert_eq!(reloaded_dto, dto);
+        }
+
+        // 2. Transcription kinds round-trip across save -> DTO -> disk serialize -> reload
+        let transcription_cases = [
+            ("local", Some("english-fast"), None, false),
+            ("local", Some("multilingual"), None, false),
+            ("openai", None, Some("whisper-1"), true),
+            ("groq", None, Some("whisper-large-v3"), true),
+            ("deepgram", None, None, true),
+            ("assemblyai", None, None, true),
+            ("elevenlabs", None, None, true),
+            ("gemini", None, None, true),
+            ("none", None, None, false),
+        ];
+
+        for (kind_str, local_model_opt, model_opt, has_key) in transcription_cases {
+            let key_update = if has_key {
+                json!({"action": "set", "value": "test-stt-key-456"})
+            } else {
+                json!({"action": "clear"})
+            };
+            let req = save(json!({
+                "transcription": {
+                    "kind": kind_str,
+                    "localModel": local_model_opt,
+                    "model": model_opt,
+                    "apiKey": key_update
+                }
+            }));
+            let (next_settings, next_keys) = apply_save(&base, &keys, &req, Platform::Windows).unwrap();
+            let dto = to_dto(&next_settings, &next_keys);
+            assert_eq!(dto.transcription.kind.id(), kind_str);
+            assert_eq!(dto.transcription.has_api_key, has_key);
+
+            let json_str = serde_json::to_string(&next_settings.to_value()).unwrap();
+            let parsed_val: Value = serde_json::from_str(&json_str).unwrap();
+            let reloaded_settings = StoredSettings::from_value(Some(&parsed_val), Platform::Windows);
+            assert_eq!(reloaded_settings, next_settings);
+
+            let key_bytes = next_keys.to_bytes();
+            let reloaded_keys = KeyFile::from_bytes(Some(&key_bytes));
+            assert_eq!(reloaded_keys, next_keys);
+
+            let reloaded_dto = to_dto(&reloaded_settings, &reloaded_keys);
+            assert_eq!(reloaded_dto, dto);
+        }
+
+        // 3. Apple speech on Mac platform
+        let mac_base = StoredSettings::defaults(Platform::Mac);
+        let mac_req = save(json!({
+            "transcription": {
+                "kind": "apple",
+                "localModel": null,
+                "model": null,
+                "apiKey": {"action": "keep"}
+            }
+        }));
+        let (mac_next, mac_keys) = apply_save(&mac_base, &keys, &mac_req, Platform::Mac).unwrap();
+        let mac_dto = to_dto(&mac_next, &mac_keys);
+        assert_eq!(mac_dto.transcription.kind, TranscriptionKind::Apple);
+        assert!(!mac_dto.transcription.has_api_key);
+        let mac_json = serde_json::to_string(&mac_next.to_value()).unwrap();
+        let mac_reloaded = StoredSettings::from_value(Some(&serde_json::from_str(&mac_json).unwrap()), Platform::Mac);
+        assert_eq!(mac_reloaded, mac_next);
+    }
+
+    #[test]
     fn moment_provider_needs_what_the_preset_needs() {
         let mut s = windows();
         assert!(matches!(

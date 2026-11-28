@@ -14,6 +14,7 @@ export class ProviderError extends Error {
     } else {
       msg = `${provider} transcription failed (HTTP ${status})`;
       if (status === 401 || status === 403) msg += ": check the API key";
+      else if (status === 404) msg += ": check the base URL and model name";
       else if (status === 413) msg += ": the audio is too large for this provider";
       else if (status === 429) msg += ": rate limited, try again later";
       else if (detail) msg += `: ${detail}`;
@@ -72,71 +73,95 @@ async function bodyBytes(url: string, init: RequestInit): Promise<{ bytes: Uint8
   return { bytes: new Uint8Array(await r.arrayBuffer()), contentType: r.headers.get("content-type") };
 }
 
+function retryDelayMs(header: string | null | undefined): number {
+  const capMs = 60 * 1000;
+  if (!header) return 1000;
+  const sec = Number(header.trim());
+  if (Number.isFinite(sec) && sec >= 0) {
+    return Math.min(sec * 1000, capMs);
+  }
+  const dateMs = Date.parse(header.trim());
+  if (Number.isFinite(dateMs)) {
+    const delay = Math.max(0, dateMs - Date.now());
+    return Math.min(delay, capMs);
+  }
+  return 1000;
+}
+
 async function send(provider: string, url: string, init: RequestInit, signal: AbortSignal | undefined, timing: RequestTiming): Promise<Sent> {
   const idleMs = timing.idleMs ?? PROVIDER_IDLE_TIMEOUT_MS;
   const answerWaitMs = timing.answerWaitMs ?? PROVIDER_ANSWER_WAIT_MS;
-  const clock = new AbortController();
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let waiting = false;
-  const arm = (ms: number, answerWait: boolean) => {
-    clearTimeout(timer);
-    waiting = answerWait;
-    timer = setTimeout(() => clock.abort(), ms);
-  };
-  const bump = () => arm(idleMs, false);
-  const done = () => clearTimeout(timer);
-  const combined = signal ? AbortSignal.any([signal, clock.signal]) : clock.signal;
-  const timeoutError = () => {
-    if (!clock.signal.aborted || signal?.aborted) return null;
-    return new ProviderError(
-      provider,
-      undefined,
-      waiting ? `no answer ${Math.round(answerWaitMs / 60_000)} min after the upload, gave up` : `no progress for ${Math.round(idleMs / 1000)} s, gave up`,
-    );
-  };
-  bump();
+  const body = await bodyBytes(url, init);
 
-  let res: Response;
-  try {
-    const body = await bodyBytes(url, init);
-    let finalInit: RequestInit & { duplex?: "half" } = { ...init, redirect: "error", signal: combined };
-    if (body) {
-      // Streamed in slices so a slow upload that is still moving is not cut
-      // off; once it has all gone, the provider gets the longer answer wait.
-      const headers = new Headers(init.headers);
-      if (body.contentType && !headers.has("content-type")) headers.set("content-type", body.contentType);
-      headers.set("content-length", String(body.bytes.byteLength));
-      let offset = 0;
-      const stream = new ReadableStream<Uint8Array>({
-        pull(controller) {
-          if (offset >= body.bytes.byteLength) {
-            arm(answerWaitMs, true);
-            return controller.close();
-          }
-          bump();
-          controller.enqueue(body.bytes.subarray(offset, offset + UPLOAD_SLICE));
-          offset += UPLOAD_SLICE;
-        },
-      });
-      finalInit = { ...finalInit, headers, body: stream, duplex: "half" };
-    }
-    res = await fetch(url, finalInit);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const clock = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let waiting = false;
+    const arm = (ms: number, answerWait: boolean) => {
+      clearTimeout(timer);
+      waiting = answerWait;
+      timer = setTimeout(() => clock.abort(), ms);
+    };
+    const bump = () => arm(idleMs, false);
+    const done = () => clearTimeout(timer);
+    const combined = signal ? AbortSignal.any([signal, clock.signal]) : clock.signal;
+    const timeoutError = () => {
+      if (!clock.signal.aborted || signal?.aborted) return null;
+      return new ProviderError(
+        provider,
+        undefined,
+        waiting ? `no answer ${Math.round(answerWaitMs / 60_000)} min after the upload, gave up` : `no progress for ${Math.round(idleMs / 1000)} s, gave up`,
+      );
+    };
     bump();
-  } catch (err) {
-    done();
-    const timedOut = timeoutError();
-    if (timedOut) throw timedOut;
-    if ((err as Error).name === "AbortError" || signal?.aborted) throw err;
-    const code = (err as { cause?: { code?: string } }).cause?.code;
-    throw new ProviderError(provider, undefined, code ? `network error (${code})` : "the provider could not be reached");
+
+    let res: Response;
+    try {
+      let finalInit: RequestInit & { duplex?: "half" } = { ...init, redirect: "error", signal: combined };
+      if (body) {
+        // Streamed in slices so a slow upload that is still moving is not cut
+        // off; once it has all gone, the provider gets the longer answer wait.
+        const headers = new Headers(init.headers);
+        if (body.contentType && !headers.has("content-type")) headers.set("content-type", body.contentType);
+        headers.set("content-length", String(body.bytes.byteLength));
+        let offset = 0;
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (offset >= body.bytes.byteLength) {
+              arm(answerWaitMs, true);
+              return controller.close();
+            }
+            bump();
+            controller.enqueue(body.bytes.subarray(offset, offset + UPLOAD_SLICE));
+            offset += UPLOAD_SLICE;
+          },
+        });
+        finalInit = { ...finalInit, headers, body: stream, duplex: "half" };
+      }
+      res = await fetch(url, finalInit);
+      bump();
+    } catch (err) {
+      done();
+      const timedOut = timeoutError();
+      if (timedOut) throw timedOut;
+      if ((err as Error).name === "AbortError" || signal?.aborted) throw err;
+      const code = (err as { cause?: { code?: string } }).cause?.code;
+      throw new ProviderError(provider, undefined, code ? `network error (${code})` : "the provider could not be reached");
+    }
+    if (!res.ok) {
+      done();
+      // Drain without reading the body into any message.
+      await res.body?.cancel().catch(() => undefined);
+      if (attempt === 0 && (res.status === 429 || res.status === 503)) {
+        const delay = retryDelayMs(res.headers.get("retry-after"));
+        await sleep(delay, signal);
+        continue;
+      }
+      throw new ProviderError(provider, res.status);
+    }
+    return { res, timeoutError, bump, done };
   }
-  if (!res.ok) {
-    done();
-    // Drain without reading the body into any message.
-    await res.body?.cancel().catch(() => undefined);
-    throw new ProviderError(provider, res.status);
-  }
-  return { res, timeoutError, bump, done };
+  throw new ProviderError(provider);
 }
 
 /**

@@ -128,6 +128,13 @@ describe("parseSourceId", () => {
     expect(parseSourceId("1")).toEqual({ kind: "display", index: 1 });
   });
 
+  it("handles case-insensitive prefixes for display and window (Issue #8)", () => {
+    expect(parseSourceId("Display:1")).toEqual({ kind: "display", index: 1 });
+    expect(parseSourceId("DISPLAY:2")).toEqual({ kind: "display", index: 2 });
+    expect(parseSourceId("WINDOW:0x1a00003")).toEqual({ kind: "window", id: 0x1a00003 });
+    expect(parseSourceId("Window:0x1a00003")).toEqual({ kind: "window", id: 0x1a00003 });
+  });
+
   it("reads window ids in hex or decimal", () => {
     expect(parseSourceId("window:0x1a00003")).toEqual({ kind: "window", id: 0x1a00003 });
     expect(parseSourceId("window:27262979")).toEqual({ kind: "window", id: 27262979 });

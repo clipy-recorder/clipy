@@ -527,19 +527,19 @@ async fn one_attempt(
 
 /// The JSON inside a ```json fence, or the text itself.
 fn strip_code_fence(text: &str) -> &str {
-    let t = text.trim_start_matches(js::is_space);
-    let Some(rest) = t.strip_prefix("```") else {
-        return text;
-    };
-    let rest = match rest.get(..4) {
-        Some(tag) if tag.eq_ignore_ascii_case("json") => &rest[4..],
-        _ => rest,
-    };
-    let rest = rest.trim_start_matches(js::is_space);
-    let Some(inner) = rest.trim_end_matches(js::is_space).strip_suffix("```") else {
-        return text;
-    };
-    inner.trim_end_matches(js::is_space)
+    if let Some(start_idx) = text.find("```") {
+        let after_start = &text[start_idx + 3..];
+        let rest = match after_start.get(..4) {
+            Some(tag) if tag.eq_ignore_ascii_case("json") => &after_start[4..],
+            _ => after_start,
+        };
+        let rest_trimmed = rest.trim_start_matches(js::is_space);
+        if let Some(end_idx) = rest_trimmed.find("```") {
+            let inner = &rest_trimmed[..end_idx];
+            return inner.trim_matches(js::is_space);
+        }
+    }
+    text.trim_matches(js::is_space)
 }
 
 /// Validate the model's spoken cues (`parseLocalMoments`): an object with
@@ -707,6 +707,14 @@ mod tests {
         assert_eq!(strip_code_fence("{}"), "{}");
         assert_eq!(strip_code_fence("```{}"), "```{}");
         assert_eq!(strip_code_fence("``````"), "");
+        assert_eq!(
+            strip_code_fence("Here are the moments:\n```json\n{\"a\":1}\n```"),
+            "{\"a\":1}"
+        );
+        assert_eq!(
+            strip_code_fence("Here are the moments:\n```\n[]\n```\nDone!"),
+            "[]"
+        );
     }
 
     #[test]

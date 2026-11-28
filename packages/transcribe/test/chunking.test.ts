@@ -47,6 +47,43 @@ describe("parseSilencedetectOutput", () => {
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
   });
+
+  it("parses timestamps in scientific exponent notation (Issue #2)", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 6.25e-05",
+      "[silencedetect @ 0x1] silence_end: 1.25e-01 | silence_duration: 1.249375e-01",
+      "[silencedetect @ 0x1] silence_start: -2.5e-04",
+      "[silencedetect @ 0x1] silence_end: 3.5e-01 | silence_duration: 3.5025e-01",
+    ].join("\n");
+    const spans = parseSilencedetectOutput(out);
+    expect(spans).toHaveLength(2);
+    expect(spans[0].startSec).toBeCloseTo(0.0000625, 7);
+    expect(spans[0].endSec).toBeCloseTo(0.125, 3);
+    expect(spans[1].startSec).toBe(0); // clamped from negative exponent
+    expect(spans[1].endSec).toBeCloseTo(0.35, 2);
+  });
+
+  it("handles Windows CRLF line endings, negative start, orphan end, and zero-length spans (Issue #6)", () => {
+    const crlfOut = [
+      "[silencedetect @ 0x1] silence_start: -0.5\r\n",
+      "[silencedetect @ 0x1] silence_end: 2.0 | silence_duration: 2.5\r\n",
+      // End line with no preceding start line: start is calculated as end - duration (3.0 - 1.0 = 2.0)
+      "[silencedetect @ 0x1] silence_end: 3.0 | silence_duration: 1.0\r\n",
+      // Zero-length span (endSec === startSec): should be dropped
+      "[silencedetect @ 0x1] silence_start: 4.0\r\n",
+      "[silencedetect @ 0x1] silence_end: 4.0 | silence_duration: 0\r\n",
+      // Regular span with CRLF
+      "[silencedetect @ 0x1] silence_start: 5.0\r\n",
+      "[silencedetect @ 0x1] silence_end: 6.5 | silence_duration: 1.5\r\n",
+    ].join("");
+
+    const spans = parseSilencedetectOutput(crlfOut);
+    expect(spans).toEqual([
+      { startSec: 0, endSec: 2.0 },
+      { startSec: 2.0, endSec: 3.0 },
+      { startSec: 5.0, endSec: 6.5 },
+    ]);
+  });
 });
 
 describe("planChunks", () => {
@@ -220,5 +257,146 @@ describe("grouping", () => {
       { start: 3.3, end: 4, text: "Then more" },
       { start: 6, end: 7, text: "after pause" },
     ]);
+  });
+
+  it("recognises sentence ends with curly quotes, ellipsis, and CJK brackets (Issue #1)", () => {
+    // 1. Plain "done."
+    const plainWords = [
+      { start: 0, end: 1, text: "We" },
+      { start: 1, end: 2, text: "are" },
+      { start: 2, end: 3.5, text: "done." },
+      { start: 3.5, end: 4, text: "Next" },
+    ];
+    const plainSegs = groupWordsIntoSegments(plainWords);
+    expect(plainSegs).toHaveLength(2);
+    expect(plainSegs[0].text).toBe("We are done.");
+    expect(plainSegs[1].text).toBe("Next");
+
+    // 2. Curly quote "done.”"
+    const quoteWords = [
+      { start: 0, end: 1, text: "She" },
+      { start: 1, end: 2, text: "said" },
+      { start: 2, end: 3.5, text: "done.”" },
+      { start: 3.5, end: 4, text: "Next" },
+    ];
+    const quoteSegs = groupWordsIntoSegments(quoteWords);
+    expect(quoteSegs).toHaveLength(2);
+    expect(quoteSegs[0].text).toBe("She said done.”");
+    expect(quoteSegs[1].text).toBe("Next");
+
+    // 3. Ellipsis "wait…"
+    const ellipsisWords = [
+      { start: 0, end: 1, text: "Please" },
+      { start: 1, end: 2, text: "just" },
+      { start: 2, end: 3.5, text: "wait…" },
+      { start: 3.5, end: 4, text: "Next" },
+    ];
+    const ellipsisSegs = groupWordsIntoSegments(ellipsisWords);
+    expect(ellipsisSegs).toHaveLength(2);
+    expect(ellipsisSegs[0].text).toBe("Please just wait…");
+    expect(ellipsisSegs[1].text).toBe("Next");
+
+    // 4. CJK closing brackets "「終わり。」"
+    const cjkWords = [
+      { start: 0, end: 1, text: "これ" },
+      { start: 1, end: 2, text: "で" },
+      { start: 2, end: 3.5, text: "「終わり。」" },
+      { start: 3.5, end: 4, text: "次" },
+    ];
+    const cjkSegs = groupWordsIntoSegments(cjkWords);
+    expect(cjkSegs).toHaveLength(2);
+    expect(cjkSegs[0].text).toBe("これで「終わり。」");
+    expect(cjkSegs[1].text).toBe("次");
+  });
+
+  it("joins words without spaces for non-space scripts (Issue #33)", () => {
+    // Japanese
+    const japaneseWords = [
+      { start: 0, end: 0.5, text: "これ" },
+      { start: 0.5, end: 0.8, text: "は" },
+      { start: 0.8, end: 1.5, text: "テスト" },
+      { start: 1.5, end: 2.0, text: "です" },
+      { start: 2.0, end: 2.2, text: "。" },
+    ];
+    const jaSegs = groupWordsIntoSegments(japaneseWords);
+    expect(jaSegs).toHaveLength(1);
+    expect(jaSegs[0].text).toBe("これはテストです。");
+
+    // Chinese
+    const chineseWords = [
+      { start: 0, end: 0.5, text: "欢迎" },
+      { start: 0.5, end: 1.0, text: "使用" },
+      { start: 1.0, end: 1.5, text: "系统" },
+    ];
+    const zhSegs = groupWordsIntoSegments(chineseWords);
+    expect(zhSegs).toHaveLength(1);
+    expect(zhSegs[0].text).toBe("欢迎使用系统");
+
+    // Korean maintains spaces between words
+    const koreanWords = [
+      { start: 0, end: 0.5, text: "안녕" },
+      { start: 0.5, end: 1.0, text: "하세요" },
+    ];
+    const koSegs = groupWordsIntoSegments(koreanWords);
+    expect(koSegs).toHaveLength(1);
+    expect(koSegs[0].text).toBe("안녕 하세요");
+
+    // Thai
+    const thaiWords = [
+      { start: 0, end: 0.5, text: "สวัสดี" },
+      { start: 0.5, end: 1.0, text: "ครับ" },
+    ];
+    const thaiSegs = groupWordsIntoSegments(thaiWords);
+    expect(thaiSegs[0].text).toBe("สวัสดีครับ");
+
+    // Khmer
+    const khmerWords = [
+      { start: 0, end: 0.5, text: "សួស្តី" },
+      { start: 0.5, end: 1.0, text: "កម្ពុជា" },
+    ];
+    const khmerSegs = groupWordsIntoSegments(khmerWords);
+    expect(khmerSegs[0].text).toBe("សួស្តីកម្ពុជា");
+
+    // Lao
+    const laoWords = [
+      { start: 0, end: 0.5, text: "ສະບາຍ" },
+      { start: 0.5, end: 1.0, text: "ດີ" },
+    ];
+    const laoSegs = groupWordsIntoSegments(laoWords);
+    expect(laoSegs[0].text).toBe("ສະບາຍດີ");
+
+    // Burmese
+    const burmeseWords = [
+      { start: 0, end: 0.5, text: "မင်္ဂလာ" },
+      { start: 0.5, end: 1.0, text: "ပါ" },
+    ];
+    const burmeseSegs = groupWordsIntoSegments(burmeseWords);
+    expect(burmeseSegs[0].text).toBe("မင်္ဂလာပါ");
+
+    // Mixed script (Latin + CJK)
+    const mixedWords = [
+      { start: 0, end: 0.5, text: "Clipy" },
+      { start: 0.5, end: 1.0, text: "録画" },
+    ];
+    const mixedSegs = groupWordsIntoSegments(mixedWords);
+    expect(mixedSegs[0].text).toBe("Clipy録画");
+
+    // Clinging punctuation
+    const punctWords = [
+      { start: 0, end: 0.5, text: "Hello" },
+      { start: 0.5, end: 0.8, text: "," },
+      { start: 0.8, end: 1.2, text: "world" },
+      { start: 1.2, end: 1.5, text: "!" },
+    ];
+    const punctSegs = groupWordsIntoSegments(punctWords);
+    expect(punctSegs[0].text).toBe("Hello, world!");
+
+    // Custom joiner override
+    const customWords = [
+      { start: 0, end: 0.5, text: "Alpha" },
+      { start: 0.5, end: 1.0, text: "Beta" },
+    ];
+    const customSegs = groupWordsIntoSegments(customWords, "-");
+    expect(customSegs[0].text).toBe("Alpha-Beta");
   });
 });

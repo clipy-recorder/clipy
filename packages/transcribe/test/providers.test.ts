@@ -8,7 +8,7 @@ import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
-import { ProviderError, requestJson } from "../src/providers/http.js";
+import { ProviderError, joinUrl, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
@@ -484,6 +484,125 @@ describe("response safety", () => {
     // Under the cap the same answer parses.
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
+    });
+  });
+
+  describe("ProviderError and joinUrl", () => {
+    it("formats 401 with exact message and suppresses any detail", () => {
+      const err = new ProviderError("deepgram", 401, "secret key sk-12345");
+      expect(err.message).toBe("deepgram transcription failed (HTTP 401): check the API key");
+      expect(err.message).not.toContain("secret key");
+      expect(err.status).toBe(401);
+      expect(err.provider).toBe("deepgram");
+    });
+
+    it("formats 403 with exact message", () => {
+      const err = new ProviderError("openai", 403);
+      expect(err.message).toBe("openai transcription failed (HTTP 403): check the API key");
+      expect(err.status).toBe(403);
+    });
+
+    it("formats 404 with exact message suggesting base URL and model check", () => {
+      const err = new ProviderError("openai-compatible", 404, "endpoint /v1/transcribe not found");
+      expect(err.message).toBe("openai-compatible transcription failed (HTTP 404): check the base URL and model name");
+      expect(err.message).not.toContain("endpoint");
+      expect(err.status).toBe(404);
+    });
+
+    it("formats 413 with exact message", () => {
+      const err = new ProviderError("groq", 413);
+      expect(err.message).toBe("groq transcription failed (HTTP 413): the audio is too large for this provider");
+      expect(err.status).toBe(413);
+    });
+
+    it("formats 429 with exact message", () => {
+      const err = new ProviderError("elevenlabs", 429);
+      expect(err.message).toBe("elevenlabs transcription failed (HTTP 429): rate limited, try again later");
+      expect(err.status).toBe(429);
+    });
+
+    it("formats another status with a detail", () => {
+      const err = new ProviderError("assemblyai", 500, "internal server error");
+      expect(err.message).toBe("assemblyai transcription failed (HTTP 500): internal server error");
+      expect(err.status).toBe(500);
+    });
+
+    it("formats another status without a detail", () => {
+      const err = new ProviderError("assemblyai", 500);
+      expect(err.message).toBe("assemblyai transcription failed (HTTP 500)");
+      expect(err.status).toBe(500);
+    });
+
+    it("formats no status with a detail", () => {
+      const err = new ProviderError("deepgram", undefined, "connection reset by peer");
+      expect(err.message).toBe("deepgram transcription failed: connection reset by peer");
+      expect(err.status).toBeUndefined();
+    });
+
+    it("formats no status without a detail", () => {
+      const err = new ProviderError("deepgram");
+      expect(err.message).toBe("deepgram transcription failed: the provider could not be reached");
+      expect(err.status).toBeUndefined();
+    });
+
+    it("joins URLs correctly with extra slashes on both sides", () => {
+      expect(joinUrl("https://api.example.com///", "///v1/transcribe")).toBe("https://api.example.com/v1/transcribe");
+      expect(joinUrl("https://api.example.com", "v1/transcribe")).toBe("https://api.example.com/v1/transcribe");
+      expect(joinUrl("https://api.example.com/", "/v1/transcribe")).toBe("https://api.example.com/v1/transcribe");
+    });
+  });
+
+  describe("rate limits and retry (Issue #32)", () => {
+    it("retries once on 429 and succeeds when second attempt answers 200", async () => {
+      let attempts = 0;
+      server = await fakeServer(async (_req, res) => {
+        attempts++;
+        if (attempts === 1) {
+          res.statusCode = 429;
+          res.setHeader("retry-after", "0");
+          res.end("rate limited");
+        } else {
+          json(res, { text: "success after retry" });
+        }
+      });
+
+      const res = await requestJson<{ text: string }>("test-provider", `${server.url}/v1/test`, { method: "POST" });
+      expect(attempts).toBe(2);
+      expect(res.text).toBe("success after retry");
+    });
+
+    it("fails with ProviderError when 429 occurs twice", async () => {
+      let attempts = 0;
+      server = await fakeServer(async (_req, res) => {
+        attempts++;
+        res.statusCode = 429;
+        res.setHeader("retry-after", "0");
+        res.end("rate limited again");
+      });
+
+      const err = await requestJson("test-provider", `${server.url}/v1/test`, { method: "POST" }).catch((e: Error) => e);
+      expect(attempts).toBe(2);
+      expect(err).toBeInstanceOf(ProviderError);
+      expect((err as ProviderError).status).toBe(429);
+      expect((err as ProviderError).message).toContain("rate limited, try again later");
+    });
+
+    it("stops without waiting out Retry-After when aborted", async () => {
+      server = await fakeServer(async (_req, res) => {
+        res.statusCode = 429;
+        res.setHeader("retry-after", "60");
+        res.end("rate limited");
+      });
+
+      const controller = new AbortController();
+      const p = requestJson("test-provider", `${server.url}/v1/test`, { method: "POST" }, controller.signal);
+      setTimeout(() => controller.abort(), 20);
+
+      const start = Date.now();
+      const err = await p.catch((e: Error) => e);
+      const elapsed = Date.now() - start;
+      expect((err as Error).name).toBe("AbortError");
+      expect(elapsed).toBeLessThan(1000);
     });
   });
 });

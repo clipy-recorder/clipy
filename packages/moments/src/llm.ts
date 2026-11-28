@@ -101,9 +101,9 @@ export interface ChatOptions {
   messages: ChatMessage[];
 }
 
-function stripCodeFence(text: string): string {
-  const fenced = /^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text);
-  return fenced ? fenced[1] : text;
+export function stripCodeFence(text: string): string {
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(text);
+  return fenced ? fenced[1].trim() : text.trim();
 }
 
 export async function chatJSON<T = unknown>(opts: ChatOptions): Promise<{ parsed: T; raw: { text: string } }> {
@@ -113,23 +113,31 @@ export async function chatJSON<T = unknown>(opts: ChatOptions): Promise<{ parsed
     // Rules only. The planner's schema accepts an empty list.
     return { parsed: { moments: [] } as T, raw: { text: "" } };
   }
-  const res = await fetch(`${provider.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    redirect: "error",
-    signal: opts.signal,
-    headers: {
-      "Content-Type": "application/json",
-      ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
-      ...provider.headers,
-    },
-    body: JSON.stringify({
-      model: provider.model,
-      messages: opts.messages,
-      temperature: opts.temperature,
-      max_tokens: opts.maxTokens,
-      response_format: { type: "json_object" },
-    }),
-  });
+
+  const sendReq = (withFormat: boolean) =>
+    fetch(`${provider.baseUrl.replace(/\/+$/, "")}/chat/completions`, {
+      method: "POST",
+      redirect: "error",
+      signal: opts.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
+        ...provider.headers,
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        messages: opts.messages,
+        temperature: opts.temperature,
+        max_tokens: opts.maxTokens,
+        ...(withFormat ? { response_format: { type: "json_object" } } : {}),
+      }),
+    });
+
+  let res = await sendReq(true);
+  if (res.status === 400) {
+    // Some local servers (like LM Studio) don't support response_format: { type: "json_object" }
+    res = await sendReq(false);
+  }
   if (!res.ok) {
     // The body can echo the transcript, so it is not included in the message.
     throw new LLMError({

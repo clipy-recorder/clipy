@@ -31,7 +31,7 @@ import { createServer } from "node:http";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const pkg = join(dirname(fileURLToPath(import.meta.url)), "..");
 const oss = join(pkg, "..", "..");
@@ -51,13 +51,14 @@ execFileSync(process.execPath, [join(oss, "scripts", "sync-from-monorepo.mjs")],
 const tsc = createRequire(join(pkg, "package.json")).resolve("typescript/bin/tsc");
 execFileSync(process.execPath, [tsc, "-p", join(pkg, "tsconfig.json")], { stdio: "inherit" });
 
-const { planMoments } = await import(join(pkg, "dist", "index.js"));
+const toUrl = (p) => pathToFileURL(p).href;
+const { planMoments } = await import(toUrl(join(pkg, "dist", "index.js")));
 const { buildCursorEvidenceFromTrack, captureRectAt, normalizeClick } = await import(
-  join(pkg, "dist", "generated", "keyMomentsCursorContext.js")
+  toUrl(join(pkg, "dist", "generated", "keyMomentsCursorContext.js"))
 );
-const { fuseMoments } = await import(join(pkg, "dist", "generated", "keyMomentsFusion.js"));
+const { fuseMoments } = await import(toUrl(join(pkg, "dist", "generated", "keyMomentsFusion.js")));
 const { LOCAL_SPOKEN_MOMENTS_MAX, LOCAL_GESTURE_MOMENTS_MAX, LOCAL_V2_MOMENTS_MAX } = await import(
-  join(pkg, "dist", "generated", "localMomentPlan.js")
+  toUrl(join(pkg, "dist", "generated", "localMomentPlan.js"))
 );
 
 const SELECTION = "bounded sample; full stream retained locally";
@@ -451,6 +452,34 @@ const cases = [];
       capture: { x: 0, y: 0, width: 32, height: 32, output_width: 32, output_height: 32 },
     }),
     cues: [{ timestamp_ms: 900, reason: `${"\u{1F680}".repeat(10)} rocket` }],
+  });
+}
+
+// 13. Mixed chords, flares, clicks, and spoken cues (Issue #35).
+{
+  const r = recorder().at(200, 200);
+  r.move(100, 200, 200);
+  r.key(1000, 59, "key_down").key(1200, 9, "key_down").key(1250, 9, "key_up").key(1400, 59, "key_up"); // Ctrl+V chord
+  r.glide(1500, 2500, 600, 600);
+  r.click(3000, "Save", "AXButton");
+  r.hold(5000, 6500); // flare
+  r.at(800, 400).click(8000, "Export", "AXMenuItem");
+  const transcript = [
+    ...utterance(800, 1000, "paste the text"),
+    ...utterance(2800, 1200, "save the draft"),
+    ...utterance(5200, 1500, "highlight the changes"),
+    ...utterance(7800, 1000, "and export the result"),
+  ];
+  cases.push({
+    name: "chords-and-speech",
+    description: "Keyboard chords, rapid clicks, flares, and spoken cues fused across mixed gestures.",
+    input: input({ durationMs: 10_000, transcript, ...r.done(), capture: SCREEN }),
+    cues: [
+      { timestamp_ms: 1200, reason: "The user pastes the copied snippet." },
+      { timestamp_ms: 3000, reason: "The user saves the draft." },
+      { timestamp_ms: 5500, reason: "The user highlights the modified area." },
+      { timestamp_ms: 8000, reason: "The user exports the finished document." },
+    ],
   });
 }
 
