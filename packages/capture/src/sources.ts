@@ -81,9 +81,10 @@ export function parseWindowGeometry(text: string): (Rect & { viewable: boolean }
 export function parseWindowProps(text: string): { title: string; app: string } {
   const quoted = (re: RegExp) => {
     const m = re.exec(text);
-    return m ? m[1].replace(/\\"/g, '"') : "";
+    return m ? m[1].replace(/\\(["\\])/g, "$1") : "";
   };
-  const title = quoted(/_NET_WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/) || quoted(/WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/);
+  // Anchored: an unanchored WM_NAME also matches inside _NET_WM_NAME and re-reads an empty one.
+  const title = quoted(/^_NET_WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/m) || quoted(/^WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/m);
   const cls = /WM_CLASS\([^)]*\) = "((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"/.exec(text);
   return { title, app: cls ? cls[2] : "" };
 }

@@ -76,6 +76,8 @@ describe("Linux parsers", () => {
     );
     expect(g).toEqual({ x: 10, y: -4, width: 800, height: 600, viewable: true });
     expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "say \\"hi\\""\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({ title: 'say "hi"', app: "XTerm" });
+    expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = ""\nWM_NAME(STRING) = "Real Title"\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({ title: "Real Title", app: "XTerm" });
+    expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "C:\\\\Users"\nWM_CLASS(STRING) = "wine", "Wine"')).toEqual({ title: "C:\\Users", app: "Wine" });
   });
 });
 
