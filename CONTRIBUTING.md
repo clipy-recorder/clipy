@@ -75,15 +75,148 @@ pnpm run typecheck
 pnpm test
 ```
 
-The capture package's real-recording tests run only on Linux with Xvfb and an
-ffmpeg that has x11grab and libx264 (`sudo apt-get install ffmpeg xvfb xauth
-libxtst6`); elsewhere they are skipped and the rest of the suite still runs.
-The other packages run anywhere.
+The capture package's real-recording tests run only on Linux with Xvfb and
+FFmpeg built with `x11grab` and `libx264`; if they are skipped, see
+[Troubleshooting](#linux-capture-integration-tests-are-skipped). The other
+packages run anywhere.
 
 `packages/moments/src/generated/` is generated from the code the hosted
 Clipy uses, so both pick moments the same way. Propose changes to it in a
 pull request as usual; a maintainer applies the change at its source so the
 next sync keeps it.
+
+## Troubleshooting
+
+### Incorrect pnpm version
+
+The root `package.json` pins pnpm to `10.18.0` in its `packageManager` field.
+At the repository root, check the version in use:
+
+```sh
+pnpm --version
+```
+
+It should print `10.18.0`. A temporary pnpm 10.17.1 invocation in this
+workspace selected the pinned 10.18.0 automatically and printed no mismatch
+error. If your command still reports another version, use Corepack to
+activate the pinned one:
+
+```sh
+corepack enable
+corepack prepare pnpm@10.18.0 --activate
+```
+
+Or install that version directly:
+
+```sh
+npm install --global pnpm@10.18.0
+```
+
+### Node.js is older than 20.19
+
+The packages that require the newer runtime declare `node >=20.19`. Check
+your Node.js version:
+
+```sh
+node --version
+```
+
+If it is below `20.19`, install Node.js 20.19 or newer using the official
+installer or a version manager, then reopen your terminal and check again.
+With Node.js 20.18.0 and pnpm 10.18.0, `pnpm install --lockfile-only
+--offline --frozen-lockfile --ignore-scripts` printed this warning for the
+packages that require Node.js 20.19:
+
+```text
+WARN  Unsupported engine: wanted: {"node":">=20.19"} (current: {"node":"v20.18.0","pnpm":"10.18.0"})
+```
+
+### FFmpeg is missing from PATH for transcription tests
+
+When transcription cannot start FFmpeg, it reports:
+
+```text
+ffmpeg was not found. Install ffmpeg (https://ffmpeg.org/download.html) and make sure it is on your PATH, or set CLIPY_FFMPEG to its full path.
+```
+
+Install FFmpeg and ensure its executable directory is on `PATH`.
+
+On Windows:
+
+```powershell
+winget install Gyan.FFmpeg
+```
+
+On macOS:
+
+```bash
+brew install ffmpeg
+```
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt-get install ffmpeg
+```
+
+On Fedora:
+
+```bash
+sudo dnf install ffmpeg
+```
+
+Reopen your terminal after updating `PATH`. On Windows, check that FFmpeg
+and FFprobe can both be found and run:
+
+```powershell
+where.exe ffmpeg
+where.exe ffprobe
+ffmpeg -version
+ffprobe -version
+```
+
+On macOS or Linux, use Bash to check that both executables can be found and
+run:
+
+```bash
+command -v ffmpeg
+command -v ffprobe
+ffmpeg -version
+ffprobe -version
+```
+
+Transcription uses FFmpeg; FFprobe is used by capture when available. If
+FFmpeg is installed but the error remains, check that its directory is on
+`PATH`, or set `CLIPY_FFMPEG` to the full executable path.
+
+### Linux capture integration tests are skipped
+
+The real-recording tests in `packages/capture/test/linux.integration.test.ts`
+are skipped rather than failed if their prerequisites are missing. On
+Windows and macOS, they are skipped because they run only on Linux. On Linux,
+the tests are skipped if Xvfb or FFmpeg is missing, or if FFmpeg lacks the
+`x11grab` input or `libx264` encoder. Missing Xvfb is therefore distinct from
+an FFmpeg build without capture support. If the virtual-display helper is
+started directly without Xvfb, its source-confirmed error is:
+
+```text
+a virtual display needs Xvfb (Debian/Ubuntu: `sudo apt install xvfb`, Fedora: `sudo dnf install xorg-x11-server-Xvfb`)
+```
+
+On Debian or Ubuntu, install the CI dependencies:
+
+```bash
+sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libxtst6
+```
+
+Xvfb supplies the virtual display; `xauth` and `libxtst6` support the
+integration tests' display authorization and simulated pointer input. FFmpeg
+must also include the `x11grab` input and `libx264` encoder. Rerun the capture
+tests after installing the dependencies:
+
+```sh
+pnpm --filter @clipy/capture test
+```
 
 ## Desktop app
 
