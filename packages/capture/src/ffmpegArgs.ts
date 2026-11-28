@@ -2,7 +2,7 @@
  * ffmpeg argument building, one backend per OS. Pure functions, so every
  * platform's command line is unit tested on any machine.
  */
-import type { Platform } from "./types.js";
+import type { Platform, CaptureOptions } from "./types.js";
 
 export type Backend = "x11grab" | "avfoundation" | "ddagrab" | "gdigrab";
 
@@ -38,6 +38,7 @@ export interface CapturePlan {
   audio?: AudioInput;
   fps: number;
   encoder: H264Encoder;
+  quality?: CaptureOptions["quality"];
   maxSeconds?: number;
   output: string;
 }
@@ -110,17 +111,21 @@ function audioInputArgs(a: AudioInput): string[] {
   }
 }
 
-function encoderArgs(encoder: H264Encoder, fps: number): string[] {
+function encoderArgs(encoder: H264Encoder, fps: number, quality: CaptureOptions["quality"] = "balanced"): string[] {
   // A keyframe every two seconds: each MP4 fragment starts on one, so a crash
   // loses at most the last couple of seconds.
   const gop = ["-g", String(Math.max(1, Math.round(fps * 2)))];
+
+  const crf = { small: "28", balanced: "23", high: "18" };
+  const bitrate = { small: "4M", balanced: "8M", high: "16M" };
+
   switch (encoder) {
     case "libx264":
-      return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", ...gop];
+      return ["-c:v", "libx264", "-preset", "veryfast", "-crf", crf[quality], "-pix_fmt", "yuv420p", ...gop];
     case "h264_videotoolbox":
-      return ["-c:v", "h264_videotoolbox", "-realtime", "1", "-b:v", "8M", "-pix_fmt", "yuv420p", ...gop];
+      return ["-c:v", "h264_videotoolbox", "-realtime", "1", "-b:v", bitrate[quality], "-pix_fmt", "yuv420p", ...gop];
     case "h264_mf":
-      return ["-c:v", "h264_mf", "-b:v", "8M", "-pix_fmt", "yuv420p", ...gop];
+      return ["-c:v", "h264_mf", "-b:v", bitrate[quality], "-pix_fmt", "yuv420p", ...gop];
   }
 }
 
@@ -151,7 +156,7 @@ export function buildFfmpegArgs(plan: CapturePlan): string[] {
   args.push("-map", "0:v:0");
   if (audioMap) args.push("-map", audioMap);
   args.push("-vf", videoFilter(plan.video.backend));
-  args.push(...encoderArgs(plan.encoder, plan.fps));
+  args.push(...encoderArgs(plan.encoder, plan.fps, plan.quality));
   if (audioMap) args.push("-c:a", "aac", "-b:a", "128k", "-ac", "2");
   if (plan.maxSeconds !== undefined && plan.maxSeconds > 0) args.push("-t", String(plan.maxSeconds));
   // A still screen compresses to almost nothing, so without flushing the

@@ -38,6 +38,7 @@ export interface CaptureOptions {
   outPath: string;
   /** Default 30. */
   fps?: number;
+  quality?: "small" | "balanced" | "high";
   /** Stop automatically after this many seconds. */
   maxSeconds?: number;
   /** false (default), true (default device) or a device name. */

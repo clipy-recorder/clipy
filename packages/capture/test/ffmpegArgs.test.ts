@@ -102,6 +102,96 @@ describe("buildFfmpegArgs", () => {
     const args = buildFfmpegArgs({ ...base, video: { backend: "ddagrab", outputIndex: 0 } });
     expect(args.slice(-7)).toEqual(["-flush_packets", "1", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "/tmp/out.mp4"]);
   });
+
+  it.each([
+    ["small", "28"],
+    ["balanced", "23"],
+    ["high", "18"],
+  ] as const)("uses %s quality for libx264", (quality, crf) => {
+    const args = buildFfmpegArgs({
+      ...base,
+      quality,
+      video: { backend: "x11grab", xDisplay: ":0" },
+    });
+
+    expect(after(args, "-c:v")).toBe("libx264");
+    expect(after(args, "-crf")).toBe(crf);
+    expect(after(args, "-preset")).toBe("veryfast");
+    expect(after(args, "-g")).toBe("60");
+  });
+
+  it.each([
+    ["small", "4M"],
+    ["balanced", "8M"],
+    ["high", "16M"],
+  ] as const)("uses %s quality for VideoToolbox", (quality, bitrate) => {
+    const args = buildFfmpegArgs({
+      ...base,
+      encoder: "h264_videotoolbox",
+      quality,
+      video: { backend: "avfoundation", device: "1" },
+    });
+
+    expect(after(args, "-c:v")).toBe("h264_videotoolbox");
+    expect(after(args, "-b:v")).toBe(bitrate);
+    expect(after(args, "-realtime")).toBe("1");
+    expect(after(args, "-g")).toBe("60");
+  });
+
+  it.each([
+    ["small", "4M"],
+    ["balanced", "8M"],
+    ["high", "16M"],
+  ] as const)("uses %s quality for Media Foundation", (quality, bitrate) => {
+    const args = buildFfmpegArgs({
+      ...base,
+      encoder: "h264_mf",
+      quality,
+      video: { backend: "gdigrab" },
+    });
+
+    expect(after(args, "-c:v")).toBe("h264_mf");
+    expect(after(args, "-b:v")).toBe(bitrate);
+    expect(after(args, "-g")).toBe("60");
+  });
+
+  it("defaults to balanced quality for libx264", () => {
+    const plan: CapturePlan = {
+      ...base,
+      video: { backend: "x11grab", xDisplay: ":0" },
+    };
+
+    expect(buildFfmpegArgs(plan)).toEqual(
+      buildFfmpegArgs({ ...plan, quality: "balanced" }),
+    );
+    expect(after(buildFfmpegArgs(plan), "-crf")).toBe("23");
+  });
+
+  it("defaults to balanced quality for VideoToolbox", () => {
+    const plan: CapturePlan = {
+      ...base,
+      encoder: "h264_videotoolbox",
+      video: { backend: "avfoundation", device: "1" },
+    };
+
+    expect(buildFfmpegArgs(plan)).toEqual(
+      buildFfmpegArgs({ ...plan, quality: "balanced" }),
+    );
+    expect(after(buildFfmpegArgs(plan), "-b:v")).toBe("8M");
+  });
+
+  it("defaults to balanced quality for Media Foundation", () => {
+    const plan: CapturePlan = {
+      ...base,
+      encoder: "h264_mf",
+      video: { backend: "gdigrab" },
+    };
+
+    expect(buildFfmpegArgs(plan)).toEqual(
+      buildFfmpegArgs({ ...plan, quality: "balanced" }),
+    );
+    expect(after(buildFfmpegArgs(plan), "-b:v")).toBe("8M");
+  });
 });
 
 describe("pickH264Encoder", () => {
