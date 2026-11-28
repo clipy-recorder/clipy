@@ -33,12 +33,13 @@ const RESPONSE_SCHEMA = {
   required: ["segments"],
 };
 
-/** Seconds as a number, or "SS", "MM:SS", "HH:MM:SS(.ms)" strings the model sometimes writes. */
 const Seconds = z.preprocess((v) => {
   if (typeof v !== "string") return v;
-  const parts = v.trim().replace(/s$/, "").split(":").map(Number);
-  if (parts.length === 0 || parts.length > 3 || parts.some((p) => !Number.isFinite(p))) return v;
-  return parts.reduce((acc, p) => acc * 60 + p, 0);
+  const parts = v.trim().replace(/s$/, "").split(":");
+  if (parts.length === 0 || parts.length > 3 || parts.some((p) => !p.trim())) return v;
+  const numbers = parts.map(Number);
+  if (numbers.some((p) => !Number.isFinite(p))) return v;
+  return numbers.reduce((acc, p) => acc * 60 + p, 0);
 }, z.number().finite().nonnegative());
 
 export const GeminiTranscript = z.object({
