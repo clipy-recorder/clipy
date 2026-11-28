@@ -147,6 +147,24 @@ export interface WavInfo {
   durationSec: number;
 }
 
+/**
+ * The WAV format tag for integer PCM audio (the only encoding `readWavInfo` supports).
+ * IEEE-float (0x0003), A-law (0x0006), µ-law (0x0007), and extensible (0xFFFE)
+ * WAV files are rejected with a clear error.
+ */
+export const WAV_FORMAT_PCM = 0x0001;
+
+/** Thrown by {@link readWavInfo} when the WAV file uses an unsupported audio encoding. */
+export class UnsupportedWavFormatError extends Error {
+  constructor(path: string, audioFormat: number) {
+    super(
+      `${path} uses an unsupported WAV encoding (format tag 0x${audioFormat.toString(16).padStart(4, "0")}). ` +
+        "Only standard PCM WAV files (format tag 0x0001) are supported.",
+    );
+    this.name = "UnsupportedWavFormatError";
+  }
+}
+
 /** Read a PCM WAV header (RIFF chunks, so extra LIST chunks are skipped). */
 export async function readWavInfo(path: string): Promise<WavInfo> {
   const size = (await stat(path)).size;
@@ -164,6 +182,10 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
       const len = head.readUInt32LE(pos + 4);
       const body = pos + 8;
       if (id === "fmt ") {
+        const audioFormat = head.readUInt16LE(body);
+        if (audioFormat !== WAV_FORMAT_PCM) {
+          throw new UnsupportedWavFormatError(path, audioFormat);
+        }
         fmt = {
           channels: head.readUInt16LE(body + 2),
           sampleRate: head.readUInt32LE(body + 4),

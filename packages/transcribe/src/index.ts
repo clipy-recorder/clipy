@@ -30,7 +30,7 @@ export type {
   TranscriptionConfig,
   TranscriptSegment,
 } from "./types.js";
-export { extractAudio, NoAudioTrackError } from "./audio.js";
+export { extractAudio, NoAudioTrackError, UnsupportedWavFormatError, WAV_FORMAT_PCM } from "./audio.js";
 export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, type LocalModel, type ModelFile } from "./models.js";
 export { ModelNotInstalledError } from "./local.js";
 export { ProviderError } from "./providers/http.js";
