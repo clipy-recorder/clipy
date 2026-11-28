@@ -105,6 +105,16 @@ pnpm tauri:dev                    # run the desktop app
 
 The crates in `desktop/src-tauri/crates/` have their own `cargo test`.
 
+### Desktop testing by operating system
+
+Desktop CI coverage differs by platform:
+
+- **macOS:** Runs the desktop TypeScript checks, build, Rust library tests, local crate tests and packaging tests.
+- **Windows:** Runs the desktop build and a Rust compilation check using `cargo check --locked`. It does not run the same desktop Rust test suite as macOS.
+- **Linux:** Runs the root package typecheck and test suites. The capture package's real-recording tests require FFmpeg, Xvfb, XAuth and XTest. Linux is not currently included in the desktop CI test jobs.
+
+When contributing to the desktop application, run the checks relevant to your operating system and describe exactly which commands you tested in your pull request.
+
 ## Pull requests
 
 - Keep each pull request to one change. Say what it does and how you tested

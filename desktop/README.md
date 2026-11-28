@@ -61,17 +61,70 @@ Security.
 
 ## Test it
 
+The desktop test commands and CI coverage differ by operating system.
+
+### macOS
+
+The desktop CI runs the following checks on macOS:
+
 ```bash
+pnpm install --frozen-lockfile
+node scripts/setup-native-deps.mjs
+pnpm tauri:icon
 pnpm exec tsc --noEmit
-bash scripts/test-rust.sh --locked --lib   # finds the FFmpeg framework for you
+pnpm run build
+brew install ffmpeg
+bash scripts/test-rust.sh --locked --lib
+```
+
+The local Rust crates also have separate test suites:
+
+```bash
+cd src-tauri/crates/clipy-local-edition
+cargo test --locked
+
+cd ../clipy-local-moments
+cargo test --locked
+
+cd ../clipy-local-stt
+cargo test --locked --no-default-features
+
+cd ../../..
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
 ```
 
-`src-tauri/crates/clipy-local-moments` (moment selection),
-`src-tauri/crates/clipy-local-stt` (transcription) and
-`src-tauri/crates/clipy-local-edition` are separate crates with their own
-`cargo test`.
+### Windows
 
+The desktop CI runs the frontend build and checks Rust compilation:
+
+```powershell
+pnpm tauri:icon
+pnpm run build
+node scripts/stage-ffmpeg-dlls.mjs
+node scripts/stage-segmentation-assets.mjs
+Set-Location src-tauri
+cargo check --locked
+```
+
+The Windows build requires Visual Studio Build Tools with the C++ workload and a shared FFmpeg 7 build configured through `FFMPEG_DIR`.
+
+The macOS Rust test script uses `DYLD_FALLBACK_LIBRARY_PATH` and should not be treated as a Windows test command.
+
+### Linux
+
+The root package CI runs:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run typecheck
+pnpm test
+```
+
+The capture package's real-recording tests run on Linux with FFmpeg, Xvfb, XAuth and XTest installed.
+
+The desktop CI test jobs currently run on macOS and Windows, not Linux.
+
+For additional desktop build requirements, see the sections above.
 ## Drive it from an agent
 
 On macOS, the official Clipy CLI records through Clipy Local with `--local`,
