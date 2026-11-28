@@ -60,6 +60,7 @@ examples in `plugins/` are always welcome without one.
 | `packages/transcribe` | Speech to timestamped segments | TypeScript, Vitest |
 | `plugins/` | Claude Code plugins and skills: `/watch`, `/record` and the Record with Clipy button | Markdown skills, TypeScript |
 | `desktop/` | The Clipy desktop app | Tauri 2 (Rust) and React |
+| `docs/` | Architecture guides, including how a recording becomes an AREC | Markdown |
 
 The packages form one pnpm workspace at the root. `desktop/` is its own pnpm
 project with its own lockfile.
