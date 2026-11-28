@@ -78,17 +78,25 @@ describe("detectSilences", () => {
 
 describe("transcribe with transcription off", () => {
   it("returns no segments and one gap over the file, and cleans up its temp folder", async () => {
-    const prevTmp = process.env.TMPDIR;
+    const prevTmpdir = process.env.TMPDIR;
+    const prevTemp = process.env.TEMP;
+    const prevTmp = process.env.TMP;
     const scratch = tempDir();
     process.env.TMPDIR = scratch;
+    process.env.TEMP = scratch;
+    process.env.TMP = scratch;
     const stages: string[] = [];
     let r;
     try {
       expect(tmpdir()).toBe(scratch);
       r = await transcribe(video, { kind: "none" }, { onProgress: (p) => stages.push(p.stage) });
     } finally {
-      if (prevTmp === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = prevTmp;
+      if (prevTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = prevTmpdir;
+      if (prevTemp === undefined) delete process.env.TEMP;
+      else process.env.TEMP = prevTemp;
+      if (prevTmp === undefined) delete process.env.TMP;
+      else process.env.TMP = prevTmp;
     }
     expect(r.segments).toEqual([]);
     expect(r.engine).toBe("none");
