@@ -759,7 +759,20 @@
     "keyMoments": "Key moments",
     "transcript": "Transcript",
     "noSpeech": "No speech recognized.",
-    "transcribing": "Transcribing…"
+    "transcribing": "Transcribing…",
+    "shortcuts": {
+      "buttonLabel": "Keyboard shortcuts",
+      "title": "Keyboard shortcuts",
+      "playPause": "Play or pause",
+      "skip5s": "Skip back or forward 5 s",
+      "moments": "Previous or next key moment",
+      "seekFocused": "Seek to focused moment or line",
+      "toggleHelp": "Show or hide shortcuts",
+      "keys": {
+        "space": "Space",
+        "enter": "Enter"
+      }
+    }
   },
   "whatsNew": {
     "features": {
