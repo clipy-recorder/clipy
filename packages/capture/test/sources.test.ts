@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Runner, RunResult } from "../src/proc.js";
 import { FAKE_FFMPEG } from "./fakeTools.js";
@@ -200,6 +203,26 @@ describe("listSources", () => {
       }),
     });
     expect(sources.map((s) => s.name)).toEqual(["DISPLAY1 (main)", "DISPLAY2"]);
+  });
+
+  it("lists Windows screens from pwsh.exe when powershell.exe is absent", async () => {
+    const fakeDir = mkdtempSync(join(tmpdir(), "clipy-pwsh-"));
+    writeFileSync(join(fakeDir, "pwsh.exe"), "");
+    const pwshEnv = { ...env, PATH: fakeDir };
+    try {
+      const sources = await listSources("win32", {
+        env: pwshEnv,
+        run: fakeRunner({
+          "pwsh.exe": {
+            stdout:
+              'S [{"name":"DISPLAY1","x":0,"y":0,"width":1920,"height":1080,"primary":true}]',
+          },
+        }),
+      });
+      expect(sources.map((s) => s.name)).toEqual(["DISPLAY1 (main)"]);
+    } finally {
+      rmSync(fakeDir, { recursive: true, force: true });
+    }
   });
 
   it("still offers the main display on Windows when PowerShell is missing", async () => {

@@ -4,7 +4,7 @@
  * installed and PowerShell on Windows. Parsers are pure and unit tested.
  */
 import { encodePowerShell, windowsScreensScript } from "./scripts.js";
-import { currentPlatform, ffmpegPath, realRunner, type Runner } from "./proc.js";
+import { currentPlatform, ffmpegPath, findExecutable, realRunner, type Runner } from "./proc.js";
 import { xEnv } from "./xauth.js";
 import type { CaptureSource, Platform } from "./types.js";
 import type { Rect } from "./ffmpegArgs.js";
@@ -215,7 +215,8 @@ export function parseScreensLine(text: string): ScreenInfo[] {
 }
 
 export async function windowsScreens(run: Runner = realRunner, env: NodeJS.ProcessEnv = process.env): Promise<ScreenInfo[]> {
-  const r = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowerShell(windowsScreensScript())], env);
+  const powershell = findExecutable("powershell.exe", "win32", env) ?? findExecutable("pwsh.exe", "win32", env) ?? "powershell.exe";
+  const r = await run(powershell, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encodePowerShell(windowsScreensScript())], env);
   return r.status === 0 ? primaryFirst(parseScreensLine(r.stdout)) : [];
 }
 
