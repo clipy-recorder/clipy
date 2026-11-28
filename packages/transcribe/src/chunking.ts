@@ -17,8 +17,8 @@ export interface SilenceSpan {
   endSec: number;
 }
 
-const START_RE = /silence_start:\s*(-?[0-9.]+)/;
-const END_RE = /silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/;
+const START_RE = /silence_start:\s*(-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/;
+const END_RE = /silence_end:\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\s*\|\s*silence_duration:\s*([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)/;
 
 /**
  * Parse ffmpeg `silencedetect` stderr. A silence still open at the end of the

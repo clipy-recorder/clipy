@@ -47,6 +47,40 @@ describe("parseSilencedetectOutput", () => {
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
   });
+
+  it("parses standard decimal timestamps", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 1.5",
+      "[silencedetect @ 0x1] silence_end: 2.75 | silence_duration: 1.25",
+    ].join("\n");
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 1.5, endSec: 2.75 }]);
+  });
+
+  it("parses scientific notation timestamps (negative and positive exponents, lowercase and uppercase E)", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 1.5e-05",
+      "[silencedetect @ 0x1] silence_end: 2.5e+00 | silence_duration: 2.499985",
+      "[silencedetect @ 0x1] silence_start: 6.25E-05",
+      "[silencedetect @ 0x1] silence_end: 1.25E-04 | silence_duration: 1.24999e-04",
+    ].join("\n");
+    expect(parseSilencedetectOutput(out)).toEqual([
+      { startSec: 0.000015, endSec: 2.5 },
+      { startSec: 0.0000625, endSec: 0.000125 },
+    ]);
+  });
+
+  it("computes start from scientific silence_duration when no start is open", () => {
+    const out = "[silencedetect @ 0x1] silence_end: 1e+01 | silence_duration: 5e+00";
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 5, endSec: 10 }]);
+  });
+
+  it("still handles negative timestamps", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: -0.01",
+      "[silencedetect @ 0x1] silence_end: 0.4 | silence_duration: 0.41",
+    ].join("\n");
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 0, endSec: 0.4 }]);
+  });
 });
 
 describe("planChunks", () => {
