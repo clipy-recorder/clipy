@@ -33,16 +33,9 @@ function runFfmpeg(args: string[], signal?: AbortSignal, keepStderr = 64 * 1024)
   return new Promise((resolve, reject) => {
     const proc = spawn(ffmpegPath(), args, { stdio: ["ignore", "ignore", "pipe"], windowsHide: true });
     let stderr = "";
-    let settled = false;
+    let processError: NodeJS.ErrnoException | undefined;
     const onAbort = () => {
       proc.kill("SIGKILL");
-      finish(() => reject(abortError()));
-    };
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener("abort", onAbort);
-      fn();
     };
     signal?.addEventListener("abort", onAbort, { once: true });
     proc.stderr.setEncoding("utf8");
@@ -51,18 +44,26 @@ function runFfmpeg(args: string[], signal?: AbortSignal, keepStderr = 64 * 1024)
       if (stderr.length > keepStderr * 2) stderr = stderr.slice(-keepStderr);
     });
     proc.on("error", (err: NodeJS.ErrnoException) => {
-      finish(() =>
+      processError = err;
+    });
+    proc.once("close", (code) => {
+      signal?.removeEventListener("abort", onAbort);
+      // The caller can now remove temporary files that FFmpeg had open.
+      if (signal?.aborted) {
+        reject(abortError());
+      } else if (processError) {
         reject(
-          err.code === "ENOENT"
+          processError.code === "ENOENT"
             ? new Error(
                 "ffmpeg was not found. Install ffmpeg (https://ffmpeg.org/download.html) " +
                   "and make sure it is on your PATH, or set CLIPY_FFMPEG to its full path.",
               )
-            : new Error(`ffmpeg could not start: ${err.code ?? err.message}`),
-        ),
-      );
+            : new Error(`ffmpeg could not start: ${processError.code ?? processError.message}`),
+        );
+      } else {
+        resolve({ code, stderr });
+      }
     });
-    proc.on("close", (code) => finish(() => resolve({ code, stderr })));
   });
 }
 
