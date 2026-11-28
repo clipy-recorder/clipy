@@ -1,0 +1,52 @@
+
+name: Check Documentation Links
+
+on:
+  pull_request:
+    paths:
+      - '*.md'
+      - '*.markdown'
+      - '**/*.md'
+      - '**/*.markdown'
+      - '.lycheeignore'
+      - '.github/workflows/check-doc-links.yml'
+  schedule:
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: doc-links-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-links:
+    name: Check Documentation Links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check documentation links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: >-
+            --verbose
+            --no-progress
+            --max-retries 3
+            --retry-wait-time 2
+            README.md
+            CONTRIBUTING.md
+            desktop/README.md
+            desktop/src-tauri/crates/clipy-local-moments/README.md
+            desktop/src-tauri/crates/clipy-local-stt/README.md
+            'plugins/**/README.md'
+          fail: true
+          failIfEmpty: true
+          jobSummary: true
