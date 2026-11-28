@@ -139,7 +139,9 @@ export async function startVirtualDisplay(opts: { width?: number; height?: numbe
       cancelExitCleanup();
       removeAuthNow();
     };
-    const args = [display, "-screen", "0", `${size.width}x${size.height}x24`, "-nolisten", "tcp", ...(auth ? ["-auth", auth.file] : [])];
+    // The client that grants localuser access exits immediately. An Xvfb
+    // reset after the last client disconnects would clear that grant.
+    const args = [display, "-screen", "0", `${size.width}x${size.height}x24`, "-noreset", "-nolisten", "tcp", ...(auth ? ["-auth", auth.file] : [])];
     const xvfb = trackChild(spawn(xvfbPath, args, { stdio: "ignore" }));
     let spawnError: Error | null = null;
     xvfb.on("error", (err) => {
