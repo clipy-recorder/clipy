@@ -361,6 +361,16 @@ pub fn init(app: &AppHandle) {
 }
 
 /// The words of a take's transcript once it has settled, for the paste.
+/// Whether Right Option is down, from `CGEventSourceFlagsState`. The key state
+/// reports both Option keys as kVK_Option (58) and never kVK_RightOption (61);
+/// only the device-dependent flag (NX_DEVICERALTKEYMASK) tells them apart.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn right_option_held(flags: u64) -> bool {
+    const OPTION_FLAG: u64 = 0x0008_0000;
+    const RIGHT_OPTION_DEVICE_FLAG: u64 = 0x40;
+    flags & OPTION_FLAG != 0 && flags & RIGHT_OPTION_DEVICE_FLAG != 0
+}
+
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 async fn wait_for_words(dir: &Path) -> Option<String> {
     let deadline = std::time::Instant::now() + WORDS_WAIT;
@@ -489,7 +499,6 @@ mod mac {
         // kCGEventFlagMaskSecondaryFn.
         const FN_FLAG: u64 = 0x0080_0000;
         const KVK_FUNCTION: u16 = 0x3F;
-        const KVK_RIGHT_OPTION: u16 = 0x3D;
         const KVK_ESCAPE: u16 = 0x35;
         // kCGEventSourceStateCombinedSessionState = 0.
         let down = |code: u16| unsafe { CGEventSourceKeyState(0, code) };
@@ -498,7 +507,7 @@ mod mac {
             TalkKey::Fn => {
                 down(KVK_FUNCTION) || unsafe { CGEventSourceFlagsState(0) } & FN_FLAG != 0
             }
-            TalkKey::RightOption => down(KVK_RIGHT_OPTION),
+            TalkKey::RightOption => right_option_held(unsafe { CGEventSourceFlagsState(0) }),
         };
         if !trigger && SESSION.lock().is_none() {
             return TalkKeys::default();
@@ -964,6 +973,15 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
         // Trashed.
         assert_eq!(external_outcome(&dir), Some(false));
+    }
+
+    #[test]
+    fn right_option_is_told_apart_from_left_by_the_device_flag() {
+        // Flags read on a MacBook Pro keyboard, 2026-11-28.
+        assert!(right_option_held(0x80140));
+        assert!(!right_option_held(0x80120));
+        assert!(!right_option_held(0x100));
+        assert!(!right_option_held(0x40));
     }
 
     #[test]
