@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { invoke } from "@tauri-apps/api/core";
 import { useFormatter, useTranslations } from "use-intl";
@@ -44,20 +44,30 @@ export default function LocalModePanel({ signedIn, listAll = false }: { signedIn
   const t = useTranslations("desktop.local");
   const format = useFormatter();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [recordings, setRecordings] = useState<LocalRecording[]>([]);
   const [showAll, setShowAll] = useState(listAll);
   const [loaded, setLoaded] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const refresh = useCallback(
-    () =>
-      invoke<LocalRecording[]>("list_local_recordings")
-        .then(setRecordings)
-        .catch((err) => setError(String(err)))
-        .finally(() => setLoaded(true)),
-    [],
-  );
+  const refreshSeq = useRef(0);
+  const refresh = useCallback(() => {
+    const seq = ++refreshSeq.current;
+    return invoke<LocalRecording[]>("list_local_recordings")
+      .then((rows) => {
+        if (seq !== refreshSeq.current) return;
+        setRecordings(rows);
+        setReadError(null);
+      })
+      .catch((err) => {
+        if (seq !== refreshSeq.current) return;
+        setReadError(String(err));
+      })
+      .finally(() => {
+        if (seq === refreshSeq.current) setLoaded(true);
+      });
+  }, []);
   useEffect(() => {
     let active = true;
     const poll = () => { if (active) void refresh(); };
@@ -67,33 +77,34 @@ export default function LocalModePanel({ signedIn, listAll = false }: { signedIn
   }, [refresh]);
 
   const signIn = async () => {
-    setBusy(true); setError(null);
+    setBusy(true); setActionError(null);
     try {
       await invoke("begin_sign_in");
-    } catch (err) { setError(String(err)); }
+    } catch (err) { setActionError(String(err)); }
     finally { setBusy(false); }
   };
   const action = async (command: string, row: LocalRecording) => {
-    setError(null);
+    setActionError(null);
     try { await invoke(command, { id: row.id }); }
-    catch (err) { setError(String(err)); }
+    catch (err) { setActionError(String(err)); }
   };
   const copyPath = async (path: string) => {
-    setError(null);
+    setActionError(null);
     try { await writeText(path); setCopiedPath(path); }
-    catch (err) { setError(String(err)); }
+    catch (err) { setActionError(String(err)); }
   };
   const setKept = async (row: LocalRecording) => {
-    setError(null);
+    setActionError(null);
     try { await invoke("set_local_recording_kept", { id: row.id, kept: !row.kept }); await refresh(); }
-    catch (err) { setError(String(err)); }
+    catch (err) { setActionError(String(err)); }
   };
   const remove = async (row: LocalRecording) => {
-    setError(null);
+    setActionError(null);
     setConfirmingId(null);
     try { await invoke("delete_local_recording", { id: row.id }); await refresh(); }
-    catch (err) { setError(String(err)); }
+    catch (err) { setActionError(String(err)); }
   };
+  const error = actionError ?? readError;
   const total = recordings.reduce((sum, row) => sum + row.bytes, 0);
   const recordingCard = (row: LocalRecording) => (
     <div key={row.id} className="border-t border-subtle pt-2 first:border-t-0 first:pt-0">
