@@ -138,9 +138,15 @@ jobs:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
+      # The three pure crates have their own lockfiles and target folders, so
+      # they are listed here too; otherwise their tests rebuild from scratch.
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: desktop/src-tauri -> target
+          workspaces: |
+            desktop/src-tauri -> target
+            desktop/src-tauri/crates/clipy-local-edition -> target
+            desktop/src-tauri/crates/clipy-local-moments -> target
+            desktop/src-tauri/crates/clipy-local-stt -> target
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # gyan.dev's shared FFmpeg 7 build: libx264, AAC and the headers
@@ -188,3 +194,32 @@ jobs:
       - name: Cargo check
         working-directory: desktop/src-tauri
         run: cargo check --locked
+
+      # The test binaries in target\debug\deps load the FFmpeg DLLs (already
+      # on PATH from the download step) and onnxruntime.dll and
+      # sherpa-onnx-c-api.dll, which stage-sherpa-onnx.mjs put in sherpa-bin\.
+      # Without that folder on PATH every test exits with STATUS_DLL_NOT_FOUND.
+      - name: Rust tests
+        working-directory: desktop/src-tauri
+        run: |
+          $env:PATH = "$PWD\sherpa-bin;$env:PATH"
+          cargo test --locked --lib
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Same three crates as the macOS job. clipy-local-stt runs without its
+      # on-device engine, as on macOS: the engine itself is covered by the
+      # desktop library tests above, which link the staged sherpa-onnx.
+      - name: Local crates
+        working-directory: desktop/src-tauri/crates
+        run: |
+          foreach ($crate in @(
+            @{ dir = 'clipy-local-edition'; args = @() },
+            @{ dir = 'clipy-local-moments'; args = @() },
+            @{ dir = 'clipy-local-stt';     args = @('--no-default-features') }
+          )) {
+            Push-Location $crate.dir
+            cargo test --locked @($crate.args)
+            $code = $LASTEXITCODE
+            Pop-Location
+            if ($code -ne 0) { throw "cargo test failed in $($crate.dir) (exit $code)" }
+          }
