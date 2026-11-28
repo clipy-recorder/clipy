@@ -77,6 +77,19 @@ describe("Linux parsers", () => {
     expect(g).toEqual({ x: 10, y: -4, width: 800, height: 600, viewable: true });
     expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "say \\"hi\\""\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({ title: 'say "hi"', app: "XTerm" });
   });
+
+  it("falls back to WM_NAME when _NET_WM_NAME is present but empty", () => {
+    expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = ""\nWM_NAME(STRING) = "Real Title"\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({
+      title: "Real Title",
+      app: "XTerm",
+    });
+    expect(parseWindowProps('WM_NAME(STRING) = "Real Title"\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({ title: "Real Title", app: "XTerm" });
+  });
+
+  it("unescapes backslashes in window titles", () => {
+    expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "C:\\\\Users"\nWM_CLASS(STRING) = "wine", "Wine"')).toEqual({ title: "C:\\Users", app: "Wine" });
+    expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "a\\\\\\"b"\nWM_CLASS(STRING) = "x", "X"')).toEqual({ title: 'a\\"b', app: "X" });
+  });
 });
 
 describe("macOS parsers", () => {
