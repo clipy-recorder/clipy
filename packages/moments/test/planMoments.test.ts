@@ -308,6 +308,25 @@ describe("long captures", () => {
   });
 });
 
+/** Each key press and click with its release (the next one of the same key or button), in order. */
+function pressesWithReleases<E extends { kind: string; key_code?: number | null; button?: number | null }>(events: readonly E[]): Array<[E, E]> {
+  const open = new Map<string, E[]>();
+  const pairs: Array<[E, E]> = [];
+  for (const e of events) {
+    const isKey = e.kind === "key_down" || e.kind === "key_up";
+    if (!isKey && e.kind !== "down" && e.kind !== "up") continue;
+    const id = isKey ? `key ${e.key_code}` : `button ${e.button}`;
+    if (e.kind === "key_down" || e.kind === "down") {
+      if (!open.has(id)) open.set(id, []);
+      open.get(id)!.push(e);
+    } else {
+      const down = open.get(id)?.shift();
+      if (down) pairs.push([down, e]);
+    }
+  }
+  return pairs;
+}
+
 describe("long typing sessions", () => {
   // 20 minutes of typing (8 keys a second) with Control holds, Ctrl+C chords
   // and pen sessions: the key events alone are far past the planner's limit.
@@ -352,7 +371,8 @@ describe("long typing sessions", () => {
     expect(flares).toHaveLength(20);
     expect(detectFlareSpans(asCursor(bounded))).toEqual(flares);
     expect(detectAnnotationSpans(asCursor(bounded), 1_200_000)).toEqual(detectAnnotationSpans(asCursor(events), 1_200_000));
-    // Key presses outside a Control hold survive only as whole pairs.
+    // Key presses outside a Control hold survive only as whole pairs; those
+    // during one (chords) are kept, and so are their releases.
     const holds: Array<[number, number]> = [];
     for (const e of events) {
       if (e.key_code !== 59) continue;
@@ -361,11 +381,102 @@ describe("long typing sessions", () => {
     }
     const inHold = (t: number) => holds.some(([a, b]) => t >= a && t <= b);
     const kept = new Set(bounded);
-    const pairs = events.filter((e) => e.kind === "key_down" && e.key_code !== 59 && !inHold(e.time_ms));
-    for (const down of pairs) {
-      const up = events.find((e) => e.kind === "key_up" && e.key_code === down.key_code && e.time_ms === down.time_ms + 60)!;
-      expect(kept.has(down)).toBe(kept.has(up));
+    const pairs = pressesWithReleases(events).filter(([down]) => down.key_code !== undefined && down.key_code !== 59);
+    const chords = pairs.filter(([down]) => inHold(down.time_ms));
+    const others = pairs.filter(([down]) => !inHold(down.time_ms));
+    expect(chords.length).toBeGreaterThan(20);
+    for (const [down, up] of chords) expect(kept.has(down) && kept.has(up)).toBe(true);
+    for (const [down, up] of others) expect(kept.has(down)).toBe(kept.has(up));
+    expect(others.some(([down]) => kept.has(down))).toBe(true);
+  });
+});
+
+describe("Control chords when the edges are thinned", () => {
+  type Event = LocalMomentInput["interactions"][number];
+  const CONTROL = 59;
+  const SHIFT = 56;
+
+  it("keeps the release of a key pressed during a Control hold", () => {
+    const events: Event[] = [
+      { kind: "down", time_ms: 0, button: 1, x: 1, y: 1 },
+      { kind: "up", time_ms: 1, button: 1, x: 1, y: 1 },
+      { kind: "key_down", time_ms: 2, key_code: CONTROL },
+      { kind: "key_down", time_ms: 3, key_code: 40 }, // "k": a chord
+      { kind: "key_up", time_ms: 4, key_code: 40 },
+      { kind: "key_up", time_ms: 5, key_code: CONTROL },
+    ];
+    // The Control hold and the whole chord fill four of the five places; the
+    // click pair does not fit in the last one and goes as a pair.
+    expect(boundInteractions(events, 5)).toEqual(events.slice(2));
+  });
+
+  // A seeded mix of clicks, plain key presses, pointer moves and Control holds
+  // with one to three chords, sometimes with Shift pressed too (a modifier,
+  // so not a chord) and sometimes with the last chord released after Control.
+  function take(seed: number): { events: Event[]; alwaysKept: Set<Event> } {
+    let state = seed;
+    const rand = (n: number) => {
+      state = (state * 1103515245 + 12345) % 2147483648;
+      return Math.floor((state / 2147483648) * n);
+    };
+    const events: Event[] = [];
+    const alwaysKept = new Set<Event>();
+    const keep = (...list: Event[]) => list.forEach((e) => alwaysKept.add(e));
+    for (let step = 0; step < 40; step++) {
+      const t = step * 20;
+      const what = rand(4);
+      if (what === 0) {
+        const button = rand(2);
+        events.push({ kind: "down", time_ms: t, x: 5, y: 5, button }, { kind: "up", time_ms: t + 3, x: 5, y: 5, button });
+      } else if (what === 1) {
+        const key_code = rand(30);
+        events.push({ kind: "key_down", time_ms: t, key_code }, { kind: "key_up", time_ms: t + 3, key_code });
+      } else if (what === 2) {
+        events.push({ kind: "move", time_ms: t, x: rand(100), y: rand(100) });
+      } else {
+        const controlDown: Event = { kind: "key_down", time_ms: t, key_code: CONTROL };
+        const controlUp: Event = { kind: "key_up", time_ms: t + 12, key_code: CONTROL };
+        keep(controlDown, controlUp);
+        events.push(controlDown);
+        if (rand(2) === 0) events.push({ kind: "key_down", time_ms: t + 1, key_code: SHIFT }, { kind: "key_up", time_ms: t + 2, key_code: SHIFT });
+        const chords = 1 + rand(3);
+        const lateRelease = rand(2) === 0;
+        let late: Event | null = null;
+        for (let k = 0; k < chords; k++) {
+          const key_code = rand(30);
+          const down: Event = { kind: "key_down", time_ms: t + 3 + 3 * k, key_code };
+          const last = k === chords - 1 && lateRelease;
+          const up: Event = { kind: "key_up", time_ms: last ? t + 14 : t + 4 + 3 * k, key_code };
+          keep(down, up);
+          events.push(down);
+          if (last) late = up;
+          else events.push(up);
+        }
+        events.push(controlUp);
+        if (late) events.push(late);
+      }
     }
-    expect(pairs.some((d) => kept.has(d))).toBe(true);
+    return { events, alwaysKept };
+  }
+
+  it("drops key presses and clicks only with their releases, at every limit", () => {
+    const failures: string[] = [];
+    let chordTakes = 0;
+    for (let seed = 1; seed <= 200; seed++) {
+      const { events, alwaysKept } = take(seed);
+      if (alwaysKept.size > 0) chordTakes++;
+      const pairs = pressesWithReleases(events);
+      for (let limit = alwaysKept.size; limit < events.length; limit++) {
+        const bounded = boundInteractions(events, limit);
+        const kept = new Set(bounded);
+        if (bounded.length > limit) failures.push(`seed ${seed}, limit ${limit}: ${bounded.length} events`);
+        for (const e of alwaysKept) if (!kept.has(e)) failures.push(`seed ${seed}, limit ${limit}: dropped ${JSON.stringify(e)}`);
+        for (const [down, up] of pairs) {
+          if (kept.has(down) !== kept.has(up)) failures.push(`seed ${seed}, limit ${limit}: split ${JSON.stringify(down)}`);
+        }
+      }
+    }
+    expect(chordTakes).toBeGreaterThan(150);
+    expect(failures.slice(0, 5)).toEqual([]);
   });
 });
