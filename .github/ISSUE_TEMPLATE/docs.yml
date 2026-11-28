@@ -1,0 +1,25 @@
+name: Docs issue
+description: A doc page or file is wrong, incomplete or missing.
+title: "[Docs] "
+labels: ["documentation"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Which page or file
+      description: A URL on clipy.online/docs, a file path in this repository (e.g. README.md), or the topic you looked for.
+      placeholder: https://clipy.online/docs/clipy-local or packages/capture/README.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+      description: What you read (or could not find) and why it did not help.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested fix
+      description: How the page should read, or what should be added. A diff or a rewrite of the paragraph is welcome.
