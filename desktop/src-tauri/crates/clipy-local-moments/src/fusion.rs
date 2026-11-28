@@ -531,3 +531,247 @@ pub(crate) fn fuse(input: &FuseInput) -> Vec<FusedMoment> {
     moments.sort_by(|a, b| cmp(a.t_ms, b.t_ms));
     moments
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cue(t_ms: f64) -> Cue {
+        Cue {
+            t_ms,
+            caption: format!("cue at {t_ms}"),
+        }
+    }
+
+    fn click(t_ms: f64) -> ClickCluster {
+        ClickCluster {
+            t_ms,
+            x: 0.0,
+            y: 0.0,
+            count: 1,
+            label: None,
+        }
+    }
+
+    fn stroke(start_ms: f64, end_ms: f64, points: &[(f64, f64)]) -> PenStroke {
+        PenStroke {
+            start_ms,
+            end_ms,
+            points: points.to_vec(),
+        }
+    }
+
+    fn segment(start_s: f64, end_s: f64, text: &str) -> (f64, f64, String) {
+        (start_s, end_s, text.to_string())
+    }
+
+    /// The click time each cue was given, in cue order.
+    fn assigned(deixis: &[Cue], clicks: &[ClickCluster]) -> Vec<Option<f64>> {
+        assign_clicks(deixis, clicks)
+            .into_iter()
+            .map(|c| c.map(|c| c.t_ms))
+            .collect()
+    }
+
+    // assign_clicks
+
+    #[test]
+    fn closer_cue_wins_a_contested_click() {
+        // Both cues are within reach of the click; the second is 500 ms from
+        // it, the first 2 s, so the second takes it and the first gets none.
+        let deixis = [cue(1_000.0), cue(2_500.0)];
+        assert_eq!(assigned(&deixis, &[click(3_000.0)]), [None, Some(3_000.0)]);
+    }
+
+    #[test]
+    fn losing_cue_falls_back_to_its_next_best_click() {
+        let deixis = [cue(0.0), cue(1_000.0)];
+        let clicks = [click(1_000.0), click(3_000.0)];
+        assert_eq!(assigned(&deixis, &clicks), [Some(3_000.0), Some(1_000.0)]);
+    }
+
+    #[test]
+    fn equal_scores_go_to_the_earlier_cue() {
+        let deixis = [cue(1_000.0), cue(1_000.0)];
+        assert_eq!(assigned(&deixis, &[click(2_000.0)]), [Some(2_000.0), None]);
+    }
+
+    #[test]
+    fn a_click_after_the_cue_beats_a_nearer_one_before_it() {
+        // Clicks before a cue score 5 s plus their distance, so one 1 ms early
+        // loses to one 4 s late.
+        let deixis = [cue(10_000.0)];
+        let clicks = [click(9_999.0), click(14_000.0)];
+        assert_eq!(assigned(&deixis, &clicks), [Some(14_000.0)]);
+    }
+
+    #[test]
+    fn a_click_before_the_cue_still_fuses_when_it_is_the_only_one() {
+        assert_eq!(
+            assigned(&[cue(10_000.0)], &[click(8_000.0)]),
+            [Some(8_000.0)]
+        );
+    }
+
+    #[test]
+    fn the_fuse_window_includes_its_edges() {
+        let deixis = [cue(10_000.0)];
+        assert_eq!(
+            assigned(&deixis, &[click(10_000.0 - FUSE_BEFORE_MS)]),
+            [Some(7_000.0)]
+        );
+        assert_eq!(
+            assigned(&deixis, &[click(10_000.0 + FUSE_AFTER_MS)]),
+            [Some(15_000.0)]
+        );
+    }
+
+    #[test]
+    fn a_click_outside_every_cue_window_is_not_assigned() {
+        let deixis = [cue(10_000.0), cue(20_000.0)];
+        let clicks = [click(6_999.0), click(15_001.0), click(25_001.0)];
+        assert_eq!(assigned(&deixis, &clicks), [None, None]);
+    }
+
+    #[test]
+    fn no_cues_or_no_clicks_assign_nothing() {
+        assert!(assign_clicks(&[], &[click(1_000.0)]).is_empty());
+        assert_eq!(assigned(&[cue(1_000.0)], &[]), [None]);
+    }
+
+    // narration_around
+
+    #[test]
+    fn narration_is_empty_when_no_segment_is_near() {
+        let segments = [segment(0.0, 2.0, "early"), segment(40.0, 42.0, "late")];
+        assert_eq!(narration_around(&segments, 20_000.0), "");
+        assert_eq!(narration_around(&[], 20_000.0), "");
+    }
+
+    #[test]
+    fn narration_window_is_eight_seconds_each_side_inclusive() {
+        // Segment times are in seconds, the moment in milliseconds.
+        let segments = [
+            segment(1.0, 2.0, "ends 8 s before"),
+            segment(1.0, 1.999, "ends just past 8 s before"),
+            segment(18.0, 19.0, "starts 8 s after"),
+            segment(18.001, 19.0, "starts just past 8 s after"),
+        ];
+        assert_eq!(
+            narration_around(&segments, 10_000.0),
+            "ends 8 s before starts 8 s after"
+        );
+    }
+
+    #[test]
+    fn narration_joins_trimmed_segments_in_order() {
+        let segments = [
+            segment(9.0, 10.0, "  first part "),
+            segment(10.0, 11.0, "\tsecond part\n"),
+        ];
+        assert_eq!(
+            narration_around(&segments, 10_000.0),
+            "first part second part"
+        );
+    }
+
+    #[test]
+    fn narration_includes_a_segment_spanning_the_whole_window() {
+        let segments = [segment(0.0, 60.0, "a long monologue")];
+        assert_eq!(narration_around(&segments, 30_000.0), "a long monologue");
+    }
+
+    // group_drawings
+
+    #[test]
+    fn strokes_far_apart_stay_separate_drawings() {
+        let strokes = [
+            stroke(0.0, 1_000.0, &[(0.1, 0.1), (0.3, 0.3)]),
+            stroke(1_000.0 + DRAW_CLUSTER_GAP_MS + 1.0, 4_000.0, &[(0.7, 0.7)]),
+        ];
+        let drawings = group_drawings(&strokes);
+        assert_eq!(drawings.len(), 2);
+        assert_eq!((drawings[0].start_ms, drawings[0].end_ms), (0.0, 1_000.0));
+        assert_eq!((drawings[0].x, drawings[0].y), (0.2, 0.2));
+        assert_eq!((drawings[1].x, drawings[1].y), (0.7, 0.7));
+    }
+
+    #[test]
+    fn strokes_within_the_gap_form_one_drawing() {
+        // Unsorted on purpose: grouping runs in start order.
+        let strokes = [
+            stroke(1_000.0 + DRAW_CLUSTER_GAP_MS, 4_000.0, &[(0.9, 0.5)]),
+            stroke(0.0, 1_000.0, &[(0.1, 0.2), (0.3, 0.1)]),
+        ];
+        let drawings = group_drawings(&strokes);
+        assert_eq!(drawings.len(), 1);
+        let d = &drawings[0];
+        assert_eq!((d.start_ms, d.end_ms), (0.0, 4_000.0));
+        // Centre of the bounding box over every point in the group.
+        assert_eq!((d.x, d.y), (0.5, 0.3));
+    }
+
+    #[test]
+    fn strokes_are_grouped_in_start_order_not_input_order() {
+        let strokes = [
+            stroke(0.0, 1_000.0, &[(0.1, 0.1)]),
+            stroke(10_000.0, 11_000.0, &[(0.9, 0.9)]),
+            stroke(2_000.0, 3_000.0, &[(0.3, 0.3)]),
+        ];
+        let spans: Vec<(f64, f64)> = group_drawings(&strokes)
+            .iter()
+            .map(|d| (d.start_ms, d.end_ms))
+            .collect();
+        assert_eq!(spans, [(0.0, 3_000.0), (10_000.0, 11_000.0)]);
+    }
+
+    #[test]
+    fn drawing_centres_are_rounded_to_four_places() {
+        let strokes = [stroke(0.0, 100.0, &[(0.0, 0.0), (0.123456, 0.987654)])];
+        let d = &group_drawings(&strokes)[0];
+        assert_eq!((d.x, d.y), (0.0617, 0.4938));
+    }
+
+    #[test]
+    fn a_drawing_without_points_is_dropped() {
+        let strokes = [
+            stroke(0.0, 100.0, &[]),
+            stroke(10_000.0, 10_100.0, &[]),
+            stroke(10_200.0, 10_300.0, &[(0.4, 0.6)]),
+        ];
+        let drawings = group_drawings(&strokes);
+        assert_eq!(drawings.len(), 1);
+        assert_eq!(drawings[0].start_ms, 10_000.0);
+        assert_eq!((drawings[0].x, drawings[0].y), (0.4, 0.6));
+        assert!(group_drawings(&[]).is_empty());
+    }
+
+    // with_clicked_label
+
+    #[test]
+    fn a_click_label_is_appended_to_the_caption() {
+        assert_eq!(
+            with_clicked_label("Opens the menu", Some("Save")),
+            "Opens the menu, clicked 'Save'"
+        );
+    }
+
+    #[test]
+    fn no_label_leaves_the_caption_unchanged() {
+        assert_eq!(with_clicked_label("Opens the menu", None), "Opens the menu");
+    }
+
+    #[test]
+    fn labelled_captions_are_cut_at_220_utf16_units() {
+        let caption = "a".repeat(200);
+        let out = with_clicked_label(&caption, Some("Save changes"));
+        assert_eq!(js::utf16_len(&out), 220);
+        assert!(out.ends_with(", clicked 'Save chan"));
+
+        // An emoji counts as two units, as it does in JavaScript.
+        let caption = "\u{1F600}".repeat(100);
+        let out = with_clicked_label(&caption, Some("Save changes"));
+        assert_eq!(js::utf16_len(&out), 220);
+        assert!(out.ends_with(", clicked 'Save chan"));
+    }
+}
