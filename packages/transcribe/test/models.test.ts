@@ -62,6 +62,35 @@ describe("LOCAL_MODELS", () => {
   });
 });
 
+describe("defaultModelDir", () => {
+  it("uses an absolute XDG_CACHE_HOME on Linux, else ~/.cache", () => {
+    expect(defaultModelDir({ HOME: "/home/ana", XDG_CACHE_HOME: "/xdg" }, "linux")).toBe("/xdg/clipy-local/models");
+    expect(defaultModelDir({ HOME: "/home/ana" }, "linux")).toBe("/home/ana/.cache/clipy-local/models");
+    // The XDG spec says to ignore a blank or relative value, as configPath does.
+    expect(defaultModelDir({ HOME: "/home/ana", XDG_CACHE_HOME: "rel/cache" }, "linux")).toBe(
+      "/home/ana/.cache/clipy-local/models",
+    );
+    expect(defaultModelDir({ HOME: "/home/ana", XDG_CACHE_HOME: "  " }, "linux")).toBe(
+      "/home/ana/.cache/clipy-local/models",
+    );
+  });
+
+  it("uses Caches on macOS, ignoring XDG_CACHE_HOME", () => {
+    expect(defaultModelDir({ HOME: "/Users/ana", XDG_CACHE_HOME: "/xdg" }, "darwin")).toBe(
+      "/Users/ana/Library/Caches/clipy-local/models",
+    );
+  });
+
+  it("uses %LOCALAPPDATA% on Windows, else the profile folder", () => {
+    expect(defaultModelDir({ LOCALAPPDATA: "C:\\Users\\ana\\AppData\\Local" }, "win32")).toBe(
+      "C:\\Users\\ana\\AppData\\Local\\clipy-local\\models",
+    );
+    expect(defaultModelDir({ USERPROFILE: "C:\\Users\\ana" }, "win32")).toBe(
+      "C:\\Users\\ana\\AppData\\Local\\clipy-local\\models",
+    );
+  });
+});
+
 describe("downloadVerified", () => {
   it("rejects a file whose checksum does not match", async () => {
     files.set("/f.bin", Buffer.from("tampered"));
@@ -293,4 +322,3 @@ describe("transcribeLocal with a broken model", () => {
     await expect(transcribeLocal(await audioInput(2), "english-fast", root)).rejects.toThrow(/Local transcription failed/);
   });
 });
-
