@@ -459,11 +459,14 @@ describe("revai", () => {
     await expect(p).rejects.toMatchObject({ name: "AbortError" });
   });
 
-  it("times out when polling takes too long", async () => {
+  it("times out when polling takes too long, without waiting for the poll interval", async () => {
     server = await fakeServer((_req, res) => json(res, { id: "rev-5", status: "in_progress" }));
-    const err = await transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5, timeoutMs: 25 }).catch((e: Error) => e);
+    const t0 = Date.now();
+    const err = await transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5000, timeoutMs: 30 }).catch((e: Error) => e);
     expect(err).toBeInstanceOf(ProviderError);
     expect((err as Error).message).toMatch(/revai.*timed out/);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(server.requests).toHaveLength(1);
   });
 });
 

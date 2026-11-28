@@ -108,14 +108,30 @@ export async function transcribeRevAI(
   const started = Date.now();
   let job = created.data;
   const jobUrl = joinUrl(base, `speechtotext/v1/jobs/${encodeURIComponent(job.id)}`);
-  while (job.status !== "transcribed") {
-    if (job.status === "failed") throw new ProviderError(provider, undefined, "the provider reported an error for this audio");
-    if (Date.now() - started > timeoutMs) throw new ProviderError(provider, undefined, "timed out waiting for the transcript");
-    await sleep(pollMs, input.signal);
-    const next = Job.safeParse(await requestJson(provider, jobUrl, { headers: auth }, input.signal));
-    if (!next.success) throw new ProviderError(provider, 200, "unexpected answer shape");
-    job = next.data;
-    input.onProgress?.(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
+  const clock = new AbortController();
+  const timer = setTimeout(() => clock.abort(), timeoutMs);
+  const pollSignal = input.signal ? AbortSignal.any([input.signal, clock.signal]) : clock.signal;
+  try {
+    while (job.status !== "transcribed") {
+      if (job.status === "failed") throw new ProviderError(provider, undefined, "the provider reported an error for this audio");
+      if (clock.signal.aborted || Date.now() - started >= timeoutMs) {
+        throw new ProviderError(provider, undefined, "timed out waiting for the transcript");
+      }
+      try {
+        await sleep(pollMs, pollSignal);
+        const next = Job.safeParse(await requestJson(provider, jobUrl, { headers: auth }, pollSignal));
+        if (!next.success) throw new ProviderError(provider, 200, "unexpected answer shape");
+        job = next.data;
+      } catch (err) {
+        if (clock.signal.aborted && !input.signal?.aborted) {
+          throw new ProviderError(provider, undefined, "timed out waiting for the transcript");
+        }
+        throw err;
+      }
+      input.onProgress?.(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
+    }
+  } finally {
+    clearTimeout(timer);
   }
 
   const transcript = Transcript.safeParse(
