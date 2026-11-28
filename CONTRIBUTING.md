@@ -105,6 +105,37 @@ pnpm tauri:dev                    # run the desktop app
 
 The crates in `desktop/src-tauri/crates/` have their own `cargo test`.
 
+## Plugins
+
+Node.js 20.19 or newer and pnpm, same as the packages above, plus a copy of
+[Claude Code](https://claude.com/claude-code) 2.1.328 or newer to try a
+plugin locally.
+
+Load a plugin straight from your clone, with no publishing step:
+
+```bash
+claude --plugin-dir plugins/watch      # or plugins/record, plugins/clipy-record
+```
+
+Run the plugin checks: the shared test that every `npx @clipy/cli` pin in
+`plugins/` is the same exact version (`scripts/plugin-pins.test.mjs`), plus
+any tests a plugin ships of its own, such as `clipy-record`'s
+[hooks/register.test.tsx](plugins/clipy-record/hooks/register.test.tsx):
+
+```bash
+pnpm test:plugins
+claude plugin test plugins/clipy-record
+```
+
+When a new `@clipy/cli` is released, bump every `npx @clipy/cli@<version>`
+pin across `plugins/` together, then rerun `pnpm test:plugins` to confirm
+they all still match — a skill pinned to an older CLI than the Record button
+would behave differently in the same session.
+
+Bump the `version` field in a plugin's `.claude-plugin/plugin.json` whenever
+that pull request changes the plugin's behaviour, its documented usage, or
+its CLI pin. A wording-only README fix does not need a version bump.
+
 ## Pull requests
 
 - Keep each pull request to one change. Say what it does and how you tested
