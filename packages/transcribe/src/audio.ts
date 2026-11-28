@@ -152,22 +152,36 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
   const size = (await stat(path)).size;
   const fh = await open(path, "r");
   try {
-    const head = Buffer.alloc(Math.min(size, 64 * 1024));
-    await fh.read(head, 0, head.length, 0);
-    if (head.toString("ascii", 0, 4) !== "RIFF" || head.toString("ascii", 8, 12) !== "WAVE") {
+    const readAt = async (position: number, length: number): Promise<Buffer | null> => {
+      const buffer = Buffer.alloc(length);
+      let offset = 0;
+      while (offset < length) {
+        const { bytesRead } = await fh.read(buffer, offset, length - offset, position + offset);
+        if (bytesRead === 0) return null;
+        offset += bytesRead;
+      }
+      return buffer;
+    };
+    const header = await readAt(0, 12);
+    if (!header || header.toString("ascii", 0, 4) !== "RIFF" || header.toString("ascii", 8, 12) !== "WAVE") {
       throw new Error(`${path} is not a WAV file`);
     }
     let pos = 12;
     let fmt: { channels: number; sampleRate: number; bits: number } | null = null;
-    while (pos + 8 <= head.length) {
-      const id = head.toString("ascii", pos, pos + 4);
-      const len = head.readUInt32LE(pos + 4);
+    while (pos + 8 <= size) {
+      const chunk = await readAt(pos, 8);
+      if (!chunk) break;
+      const id = chunk.toString("ascii", 0, 4);
+      const len = chunk.readUInt32LE(4);
       const body = pos + 8;
       if (id === "fmt ") {
+        if (len < 16 || body + 16 > size) throw new Error(`${path} has an incomplete fmt chunk`);
+        const format = await readAt(body, 16);
+        if (!format) throw new Error(`${path} has an incomplete fmt chunk`);
         fmt = {
-          channels: head.readUInt16LE(body + 2),
-          sampleRate: head.readUInt32LE(body + 4),
-          bits: head.readUInt16LE(body + 14),
+          channels: format.readUInt16LE(2),
+          sampleRate: format.readUInt32LE(4),
+          bits: format.readUInt16LE(14),
         };
       } else if (id === "data") {
         if (!fmt) break;
