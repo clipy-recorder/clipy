@@ -4096,7 +4096,6 @@ async fn run_countdown<R: Runtime>(app: &AppHandle<R>, seconds: u32) {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn surface_share_link<R: Runtime>(app: &AppHandle<R>, share: &ShareLinkDto) {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     use tauri_plugin_shell::ShellExt;
@@ -4127,7 +4126,6 @@ fn surface_share_link<R: Runtime>(app: &AppHandle<R>, share: &ShareLinkDto) {
 /// write landed: claiming a copy that failed would send the user to paste
 /// whatever their clipboard held before. Best effort, like the other
 /// notifications: macOS may hold them until authorization is granted.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn notify_share_link<R: Runtime>(app: &AppHandle<R>, copied: bool) {
     use tauri_plugin_notification::NotificationExt;
     let body = crate::i18n::t(if copied {
@@ -6279,6 +6277,7 @@ async fn start_capture<R: Runtime>(
     _audio: &AudioOptionsDto,
     _video: &VideoOptionsDto,
     _webcam: Option<WebcamCaptureDto>,
+    _capture_source: Option<CaptureSourceMetadataDto>,
     _state: &Arc<Mutex<RecordingStateDto>>,
     _mode: crate::types::RecordingMode,
 ) -> Result<()> {

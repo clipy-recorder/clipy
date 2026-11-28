@@ -305,11 +305,14 @@ pub fn init(app: &AppHandle) -> tauri::Result<()> {
         #[cfg(target_os = "windows")]
         let excludable = crate::commands::window_hwnd(&window)
             .is_some_and(|hwnd| crate::capture_exclusion::blocker(hwnd).is_none());
+        #[cfg(target_os = "macos")]
+        let click_through = true;
         #[cfg(target_os = "windows")]
         let click_through = !excludable
             || crate::commands::windows_build().map_or(true, |build| build >= 22000);
-        #[cfg(not(target_os = "windows"))]
-        let click_through = true;
+        #[cfg(target_os = "linux")]
+        let click_through = false;
+
         if click_through {
             crate::cursor_track::set_ignore_cursor_events(&window, true)?;
         } else {
