@@ -16,7 +16,7 @@
  * No-op on non-Windows.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { env, exit, platform } from "node:process";
@@ -65,6 +65,15 @@ for (const dll of dlls) {
   // used by the linker, including on repeated builds with a cached target.
   copyFileSync(from, to);
   bytes += statSync(from).size;
+}
+
+// Tauri bundles every staged DLL, including leftovers from a previous build.
+const currentDlls = new Set(dlls.map((dll) => dll.toLowerCase()));
+for (const entry of readdirSync(DEST, { withFileTypes: true })) {
+  const name = entry.name.toLowerCase();
+  if (entry.isFile() && name.endsWith(".dll") && !currentDlls.has(name)) {
+    unlinkSync(path.join(DEST, entry.name));
+  }
 }
 
 console.log(

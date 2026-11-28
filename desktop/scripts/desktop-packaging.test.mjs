@@ -114,6 +114,21 @@ test("staging is a no-op on macOS without FFMPEG_DIR", (t) => {
   assert.equal(existsSync(dest), false);
 });
 
+test("restaging FFmpeg drops DLLs removed from the shared build", (t) => {
+  const { bin, dest, run } = fixture(t);
+  writeFileSync(path.join(bin, "avutil-59.dll"), "current");
+  writeFileSync(path.join(bin, "old-codec.DLL"), "old");
+  const first = run("win32");
+  assert.equal(first.status, 0, first.stderr);
+  assert.ok(existsSync(path.join(dest, "old-codec.DLL")));
+
+  rmSync(path.join(bin, "old-codec.DLL"));
+  writeFileSync(path.join(dest, "notes.txt"), "keep");
+  const second = run("win32");
+  assert.equal(second.status, 0, second.stderr);
+  assert.deepEqual(readdirSync(dest).sort(), ["avutil-59.dll", "notes.txt"]);
+});
+
 test("Windows stages DLLs on a clean checkout, excluding executables", (t) => {
   const { bin, dest, run } = fixture(t);
   writeFileSync(path.join(bin, "avutil-59.dll"), "first");
