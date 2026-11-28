@@ -1,9 +1,11 @@
 # Labels issues from the "Bug in a Clipy app" and "Feature request" forms by
-# the product picked in them (app: chrome-extension, app: ios, ...), and makes
-# sure the labels the templates use exist. Runs only on issue events and on a
-# manual run; it checks out no code and runs nothing from the issue. The issue
-# body reaches the script through an environment variable, never through
-# ${{ }} in the script, so its text cannot become a command.
+# the product picked in them (app: chrome-extension, app: ios, ...), labels
+# issues from the "Bug in the code here" form by the area picked in it
+# (area: desktop, area: packages, area: docs), and makes sure the labels the
+# templates use exist. Runs only on issue events and on a manual run; it checks
+# out no code and runs nothing from the issue. The issue body reaches the
+# script through an environment variable, never through ${{ }} in the script,
+# so its text cannot become a command.
 name: Issue labels
 
 on:
@@ -19,7 +21,7 @@ concurrency:
 
 jobs:
   label:
-    name: Label by product
+    name: Label by product and area
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -72,3 +74,35 @@ jobs:
             [ "$name" = "$label" ] || gh issue edit "$NUMBER" --remove-label "$name"
           done
           gh issue edit "$NUMBER" --add-label "$label"
+
+      - name: Add the area label
+        if: github.event_name == 'issues'
+        env:
+          NUMBER: ${{ github.event.issue.number }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          # A form answer sits two lines under its "### Area" heading.
+          area=$(printf '%s\n' "$BODY" | tr -d '\r' | awk '/^### Area$/ { if (getline > 0 && getline > 0) { gsub(/^[ \t]+|[ \t]+$/, ""); print } exit }')
+          case "$area" in
+            "Clipy desktop app")
+              label="area: desktop" ;;
+            "packages/moments"|"packages/config"|"packages/capture"|"packages/transcribe"|"clipy CLI with --local")
+              label="area: packages" ;;
+            "Docs")
+              label="area: docs" ;;
+            *)
+              echo "No area picked; nothing to label."; exit 0 ;;
+          esac
+          # On an edit, drop stale area: labels and skip adding if already present.
+          has_label=false
+          for old in $(gh issue view "$NUMBER" --json labels --jq '.labels[].name | select(startswith("area:")) | @base64'); do
+            name=$(printf '%s' "$old" | base64 -d)
+            if [ "$name" = "$label" ]; then
+              has_label=true
+            else
+              gh issue edit "$NUMBER" --remove-label "$name"
+            fi
+          done
+          if [ "$has_label" = false ]; then
+            gh issue edit "$NUMBER" --add-label "$label"
+          fi
