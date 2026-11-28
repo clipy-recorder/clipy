@@ -52,6 +52,20 @@ The recorder encodes through FFmpeg 7.
   to the app. The recorder encodes H.264 with libx264 on Windows, so the build
   needs FFmpeg with x264.
 
+#### macOS development: native framework loading
+
+If `pnpm tauri:dev` fails because it cannot locate
+`Spacedrive.framework`, link the downloaded framework into
+Tauri's expected location:
+
+```bash
+mkdir -p src-tauri/target/Frameworks
+ln -sfn ../native-deps/Spacedrive.framework \
+  src-tauri/target/Frameworks/Spacedrive.framework
+```
+
+Then rerun `pnpm tauri:dev`.
+
 ### macOS permissions
 
 A self-built app is signed ad hoc. macOS ties the Screen Recording and
