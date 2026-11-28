@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFfmpegArgs, even, pickH264Encoder, videoFilter, type CapturePlan } from "../src/ffmpegArgs.js";
+import { windowsPlans } from "../src/capture.js";
+import { parseScreensLine, primaryFirst } from "../src/sources.js";
 
 const base = { fps: 30, encoder: "libx264" as const, output: "/tmp/out.mp4" };
 
@@ -130,5 +132,42 @@ describe("even", () => {
     expect(even(1281)).toBe(1280);
     expect(even(1)).toBe(2);
     expect(even(720)).toBe(720);
+  });
+});
+
+describe("windowsPlans", () => {
+  // Windows does not promise the main display is enumerated first, and
+  // display:N counts the main one first, so the two orders differ: here the
+  // main display is DISPLAY1, which Windows enumerated second.
+  const screens = primaryFirst(
+    parseScreensLine(
+      'S [{"name":"DISPLAY2","x":-1920,"y":0,"width":1920,"height":1080,"primary":false},' +
+        '{"name":"DISPLAY1","x":0,"y":0,"width":2560,"height":1440,"primary":true}]',
+    ),
+  );
+
+  it("gives ddagrab the DXGI output number, not the display:N position", () => {
+    const [ddagrab] = windowsPlans(base, screens, 0);
+    expect(ddagrab.label).toBe("ddagrab");
+    // display:0 is the main display, DISPLAY1, which is DXGI output 1.
+    expect(buildFfmpegArgs(ddagrab.plan).join(" ")).toContain("ddagrab=output_idx=1:");
+
+    const [second] = windowsPlans(base, screens, 1);
+    expect(buildFfmpegArgs(second.plan).join(" ")).toContain("ddagrab=output_idx=0:");
+  });
+
+  it("gives the gdigrab fallback the same screen's rectangle", () => {
+    const [, gdigrab] = windowsPlans(base, screens, 0);
+    expect(gdigrab.label).toBe("gdigrab");
+    const args = buildFfmpegArgs(gdigrab.plan);
+    expect(after(args, "-offset_x")).toBe("0");
+    expect(after(args, "-video_size")).toBe("2560x1440");
+  });
+
+  it("falls back to the position when the screens were never enumerated", () => {
+    const [ddagrab, gdigrab] = windowsPlans(base, [], 2);
+    expect(buildFfmpegArgs(ddagrab.plan).join(" ")).toContain("ddagrab=output_idx=2:");
+    // No screen, so gdigrab records the whole virtual desktop.
+    expect(buildFfmpegArgs(gdigrab.plan)).not.toContain("-offset_x");
   });
 });
