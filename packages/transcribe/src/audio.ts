@@ -147,6 +147,8 @@ export interface WavInfo {
   durationSec: number;
 }
 
+const WAVE_FORMAT_PCM = 1;
+
 /** Read a PCM WAV header (RIFF chunks, so extra LIST chunks are skipped). */
 export async function readWavInfo(path: string): Promise<WavInfo> {
   const size = (await stat(path)).size;
@@ -154,7 +156,7 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
   try {
     const head = Buffer.alloc(Math.min(size, 64 * 1024));
     await fh.read(head, 0, head.length, 0);
-    if (head.toString("ascii", 0, 4) !== "RIFF" || head.toString("ascii", 8, 12) !== "WAVE") {
+    if (head.length < 12 || head.toString("ascii", 0, 4) !== "RIFF" || head.toString("ascii", 8, 12) !== "WAVE") {
       throw new Error(`${path} is not a WAV file`);
     }
     let pos = 12;
@@ -164,6 +166,13 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
       const len = head.readUInt32LE(pos + 4);
       const body = pos + 8;
       if (id === "fmt ") {
+        if (len < 16 || body + 16 > head.length) {
+          throw new Error(`${path} has a truncated WAV fmt chunk`);
+        }
+        const audioFormat = head.readUInt16LE(body);
+        if (audioFormat !== WAVE_FORMAT_PCM) {
+          throw new Error(`${path} has unsupported WAV encoding format ${audioFormat} (only PCM format 1 is supported)`);
+        }
         fmt = {
           channels: head.readUInt16LE(body + 2),
           sampleRate: head.readUInt32LE(body + 4),
@@ -174,6 +183,9 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
         // A streamed WAV can carry a placeholder length; trust the file size.
         const dataBytes = Math.min(len, size - body);
         const bytesPerSec = fmt.sampleRate * fmt.channels * (fmt.bits / 8);
+        if (bytesPerSec <= 0) {
+          throw new Error(`${path} has invalid WAV audio parameters`);
+        }
         return {
           sampleRate: fmt.sampleRate,
           channels: fmt.channels,
