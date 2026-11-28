@@ -35,6 +35,7 @@ import { configPath, envValue } from "./paths.js";
 import { presetProvider, TRANSCRIPTION_PRESETS } from "./presets.js";
 import {
   describeIssues,
+  isHttpUrl,
   KEYED_TRANSCRIPTION_KINDS,
   LOCAL_TRANSCRIPTION_MODELS,
   MODEL_PRESETS,
@@ -230,6 +231,10 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
         throw new ConfigError(
           `OpenAI-compatible transcription needs a model name. Set CLIPY_TRANSCRIBE_MODEL or "transcription.model" (config file: ${path}).`,
         );
+      }
+            // The file's URL is checked by the schema; one from the env var is checked here.
+      if (!isHttpUrl(draft.baseUrl)) {
+        throw new ConfigError("CLIPY_TRANSCRIBE_BASE_URL must be an http:// or https:// URL.");
       }
       return { kind: "openai-compatible", baseUrl: draft.baseUrl, apiKey: draft.apiKey ?? "", model: draft.model };
     }
