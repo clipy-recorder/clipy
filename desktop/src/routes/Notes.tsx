@@ -7,6 +7,8 @@ const settingsStore = new LazyStore("settings.json");
 const RECORDING_NOTES_KEY = "recording_notes";
 const FONT_SIZES = [14, 17, 21, 26] as const;
 
+const FONT_INDEX_KEY = "note_font_index";
+const clampFont = (i: number) => Math.min(FONT_SIZES.length - 1, Math.max(0, i));  
 /**
  * The sticky note. Its own always-on-top window, excluded from every
  * capture: a teleprompter the user reads from, never part of the recording.
@@ -19,7 +21,8 @@ export default function Notes() {
   const [fontIndex, setFontIndex] = useState(1);
   const loadedRef = useRef(false);
   const localEditRef = useRef(false);
-
+  const userChangedFontRef = useRef(false);
+  
   useEffect(() => {
     let disposed = false;
     settingsStore
@@ -55,6 +58,48 @@ export default function Notes() {
     return () => window.clearTimeout(timer);
   }, [text]);
 
+  useEffect(() => {
+  let disposed = false;
+  settingsStore
+    .get<number>(FONT_INDEX_KEY)
+    .then((value) => {
+      if (disposed || userChangedFontRef.current) return;
+      if (typeof value === "number" && Number.isInteger(value)) {
+        setFontIndex(clampFont(value));
+      }
+    })
+    .catch(() => {});
+  return () => {
+    disposed = true;
+  };
+}, []);
+
+const changeFont = (delta: number) => {
+  const next = clampFont(fontIndex + delta);
+  if (next === fontIndex) return;
+  userChangedFontRef.current = true;
+  setFontIndex(next);
+  settingsStore
+    .set(FONT_INDEX_KEY, next)
+    .then(() => settingsStore.save())
+    .catch(() => {});
+};
+
+useEffect(() => {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.key === "=" || e.key === "+") {
+      e.preventDefault();
+      changeFont(1);
+    } else if (e.key === "-") {
+      e.preventDefault();
+      changeFont(-1);
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
+});
+  
   const fontSize = FONT_SIZES[fontIndex];
   const pitch = Math.round(fontSize * 1.65);
 
@@ -66,7 +111,7 @@ export default function Notes() {
         </span>
         <button
           type="button"
-          onClick={() => setFontIndex((i) => Math.max(0, i - 1))}
+          onClick={() => changeFont(-1)}
           disabled={fontIndex === 0}
           aria-label={t("smaller")}
           className="h-6 w-6 rounded-md text-[13px] font-semibold text-[#8a6d00] hover:bg-[#f0e18a] disabled:opacity-40"
@@ -75,7 +120,7 @@ export default function Notes() {
         </button>
         <button
           type="button"
-          onClick={() => setFontIndex((i) => Math.min(FONT_SIZES.length - 1, i + 1))}
+          onClick={() => changeFont(1)}
           disabled={fontIndex === FONT_SIZES.length - 1}
           aria-label={t("larger")}
           className="h-6 w-6 rounded-md text-[13px] font-semibold text-[#8a6d00] hover:bg-[#f0e18a] disabled:opacity-40"
