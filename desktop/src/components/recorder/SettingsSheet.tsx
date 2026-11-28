@@ -508,9 +508,12 @@ export function SettingsSheet(p: SettingsSheetProps) {
                 <Icon name="info" size={18} />
               </span>
               <p className="text-[12px] leading-snug text-ink-secondary">
-                {LOCAL_EDITION
-                  ? `Local recordings and their AREC context stay in Clipy's folder on this ${deviceName} and clear after ${LOCAL_RETENTION_DAYS} days unless kept.`
-                  : t("localInfo", { device: deviceName, days: LOCAL_RETENTION_DAYS })}
+                {t(
+                  LOCAL_EDITION
+                    ? "localEditionInfo"
+                    : "localInfo",
+                  { device: deviceName, days: LOCAL_RETENTION_DAYS },
+                )}
                 {!LOCAL_EDITION && isWindows && ` ${t("localInfoWindows")}`}
               </p>
             </div>

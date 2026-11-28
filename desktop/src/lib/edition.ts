@@ -23,7 +23,7 @@ export const LOCAL_EDITION: boolean =
   typeof __CLIPY_LOCAL_EDITION__ === "boolean" ? __CLIPY_LOCAL_EDITION__ : false;
 
 /** The name people see: the local edition is its own app, Clipy Local. */
-export const APP_NAME: string = LOCAL_EDITION ? "Clipy Local" : "Clipy";
+export const APP_NAME: string = brandText("Clipy");
 
 /**
  * The local edition is its own app, so the product name in every translated

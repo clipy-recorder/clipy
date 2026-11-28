@@ -86,6 +86,12 @@
   },
   "app": {
     "loading": "正在加载 Clipy…",
+    "localEditionMismatch": {
+      "title": "此 Clipy Local 构建的版本不匹配",
+      "body": "此窗口是为 Clipy Local 构建的，但运行它的是{binary}。请使用 pnpm tauri:build（或 pnpm tauri:dev）重新构建，使两部分使用同一版本。",
+      "official": "{app} 官方应用",
+      "older": "较早的 {app} 版本"
+    },
     "firstLaunchUpdate": {
       "title": "正在获取最新版 Clipy",
       "body": "Clipy {version} 已发布。正在下载，让你从最新版本开始使用。",
@@ -242,6 +248,7 @@
     "clipboardClash": "{app} 也使用 {hotkey} 打开，可能会抢先响应这个按键。请卸载 {app}，或在“快捷键”中为“剪贴板”选择其他按键。",
     "shortcutsHint": "点击输入框，然后按下按键。",
     "localInfo": "本地录制及其 AREC 上下文保存在这台 {device} 的 Clipy 文件夹中，未保留的内容 {days} 天后清除。云端录制只在上传完成前保留本地副本。",
+    "localEditionInfo": "本地录制及其 AREC 上下文保存在这台 {device} 的 Clipy 文件夹中。除非选择保留，否则会在 {days} 天后删除。",
     "localInfoWindows": "Local AI 会在 Clipy 服务器上转写音频，随后从服务器删除；视频始终不会离开这台电脑。",
     "openArec": {
       "title": "AREC 准备好后自动打开",
@@ -560,6 +567,7 @@
     "startWithCountdown": "{label}（{seconds} 秒）",
     "starting": "正在开始…",
     "openSite": "打开 clipy.online",
+    "openLocalProject": "打开 Clipy Local 项目",
     "captureMode": "捕获模式",
     "recordVideo": "录制视频",
     "takeScreenshot": "截图",
@@ -584,6 +592,8 @@
       "local": "Local AI",
       "localShort": "在这台 {device} 上",
       "localHint": "将视频和 AREC 保存在这台 {device} 上",
+      "localEditionShort": "已保存在这台 {device} 上",
+      "localEditionHint": "视频、AREC 和转录文本都保存在这台 {device} 上",
       "whatLocal": "Local AI 能做什么",
       "preferences": "录制偏好设置"
     },
@@ -641,7 +651,8 @@
     "smaller": "缩小文字",
     "larger": "放大文字",
     "hide": "隐藏笔记",
-    "placeholder": "要点、链接，还有你总忘记提的那件事…"
+    "placeholder": "要点、链接，还有你总忘记提的那件事…",
+    "privacyFooter": "只有你能看到这些备注。它们不会出现在录制中。"
   },
   "webcamControls": {
     "small": "小摄像头",
@@ -905,6 +916,7 @@
       "screenshotBusy": "已有一张截图正在标注。",
       "screenshotFailed": "截图失败：{error}",
       "screenshotNote": "除非你点击“上传”，否则不会上传任何内容",
+      "screenshotNoteLocal": "数据不会离开这台电脑",
       "annotatingOff": "标注已关闭",
       "annotatingOffBody": "截图会直接复制到剪贴板。开启“复制前先标注”即可先进行标注。",
       "annotatingTurnOn": "开启标注",
@@ -962,7 +974,8 @@
       "eyebrow": "欢迎使用 Clipy",
       "title": "录一次，人人都能看懂，你的智能体也一样。",
       "start": "开始",
-      "body": "录制你的屏幕、摄像头和声音，一停止就拿到链接，还能把录制内容作为可读上下文交给 Claude Code 或 Codex。我们来完成设置吧。"
+      "body": "录制你的屏幕、摄像头和声音，一停止就拿到链接，还能把录制内容作为可读上下文交给 Claude Code 或 Codex。我们来完成设置吧。",
+      "bodyLocal": "录制你的屏幕、摄像头画面和声音。视频保存在这台 {device} 上，Clipy 会生成转录文本和 AREC 文件，供 Claude Code、Codex 或 Cursor 等 AI 智能体读取。现在开始设置吧。"
     },
     "signIn": {
       "title": "登录 Clipy",
@@ -1058,6 +1071,7 @@
     },
     "visuals": {
       "linkCopied": "链接已复制",
+      "arecSaved": "AREC 已保存",
       "agentRead": "你的智能体已读取",
       "settings": {
         "general": "通用",

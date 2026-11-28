@@ -919,7 +919,7 @@ function ScreenshotPractice({ hotkey }: { hotkey: string }) {
     }
   };
   return (
-    <PracticeFrame note={LOCAL_EDITION ? "Nothing leaves this computer" : t("practice.screenshotNote")}>
+    <PracticeFrame note={LOCAL_EDITION ? t("practice.screenshotNoteLocal") : t("practice.screenshotNote")}>
       <div className="flex h-full flex-col justify-center gap-4 px-8">
         {editorOn === false ? (
           <div>
@@ -1102,7 +1102,7 @@ function AgentPractice() {
     <PracticeFrame note={t("practice.agentNote")}>
       <div className="flex h-full flex-col justify-center gap-3 px-8">
         <p className="text-[13px] text-ink-secondary">
-          {t(LOCAL_EDITION ? "practice.agentRunLocal" : "practice.agentRun")}
+          {LOCAL_EDITION ? t("practice.agentRunLocal") : t("practice.agentRun")}
         </p>
         {AGENT_COMMANDS.map((cmd) => (
           <div key={cmd} className="flex items-center gap-3 rounded-lg bg-ink-900 px-3.5 py-2.5 font-mono text-[12.5px] text-stone-100">
@@ -1118,7 +1118,7 @@ function AgentPractice() {
           </div>
         ))}
         <p className="text-[13px] text-ink-secondary">
-          {t(LOCAL_EDITION ? "practice.agentThenLocal" : "practice.agentThen")}{" "}
+          {LOCAL_EDITION ? t("practice.agentThenLocal") : t("practice.agentThen")}{" "}
           <button type="button" className="font-semibold text-flash-600 hover:underline" onClick={() => void open(AGENT_DOCS_URL).catch(() => {})}>
             {t("practice.howItWorks")}
           </button>

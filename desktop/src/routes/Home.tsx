@@ -655,6 +655,7 @@ function sourceSummary(
 export default function Home({ user, onCloud, initialLocal = false }: Props) {
   const t = useDesktopT();
   const tHome = useTranslations("desktop.home");
+  const openHomeLabel = LOCAL_EDITION ? t("home.openLocalProject") : t("home.openSite");
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<RecordingStateDto>(IDLE_STATE);
   const [upload, setUpload] = useState<UploadProgressDto | null>(null);
@@ -2764,8 +2765,8 @@ export default function Home({ user, onCloud, initialLocal = false }: Props) {
         <button
           type="button"
           onClick={() => void open(CLIPY_HOME_URL).catch((err) => setError(String(err)))}
-          title={LOCAL_EDITION ? "Open the Clipy Local project" : t("home.openSite")}
-          aria-label={LOCAL_EDITION ? "Open the Clipy Local project" : t("home.openSite")}
+          title={openHomeLabel}
+          aria-label={openHomeLabel}
           className="flex h-9 items-center justify-center rounded-xl px-1 text-ink-text transition-transform hover:scale-105"
         >
           <ClipyWordmark size={18} />

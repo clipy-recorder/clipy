@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useTranslations } from "use-intl";
 import Home from "../routes/Home";
 import { EDITION, type Edition } from "../lib/edition";
 
@@ -31,6 +32,7 @@ export async function binaryEdition(): Promise<Edition | "unknown"> {
 }
 
 export default function LocalEditionGate() {
+  const t = useTranslations("desktop.app");
   const [check, setCheck] = useState<Check>({ state: "checking" });
 
   useEffect(() => {
@@ -50,21 +52,23 @@ export default function LocalEditionGate() {
     return (
       <main className="popover-shell flex h-full flex-col items-center justify-center gap-3 popover-radius">
         <span className="clipy-boot-spinner" aria-hidden="true" />
-        <span className="text-xs font-medium tracking-wide text-ink-secondary">Loading Clipy…</span>
+        <span className="text-xs font-medium tracking-wide text-ink-secondary">{t("loading")}</span>
       </main>
     );
   }
 
   const binaryName =
-    check.binary === "cloud" ? "the official Clipy app" : check.binary === "local" ? "Clipy Local" : "an older Clipy build";
+    check.binary === "local"
+      ? "Clipy Local"
+      : t(check.binary === "cloud" ? "localEditionMismatch.official" : "localEditionMismatch.older", { app: "Clipy" });
   return (
     <main
       role="alert"
       className="popover-shell flex h-full flex-col items-center justify-center gap-3 px-6 text-center popover-radius"
     >
-      <p className="text-[15px] font-semibold text-ink-text">This build of Clipy Local is mismatched</p>
+      <p className="text-[15px] font-semibold text-ink-text">{t("localEditionMismatch.title")}</p>
       <p className="text-[13px] leading-snug text-ink-secondary">
-        {`Its window was built for Clipy Local, but the app around it is ${binaryName}. Rebuild with pnpm tauri:build (or pnpm tauri:dev) so both halves come from the same edition.`}
+        {t("localEditionMismatch.body", { binary: binaryName })}
       </p>
     </main>
   );
