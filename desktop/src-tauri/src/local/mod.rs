@@ -2794,6 +2794,28 @@ mod tests {
         assert_eq!(input["interactions"][0]["key_code"], 56);
     }
 
+    #[test]
+    fn a_reduced_sidecar_still_tells_a_flare_from_a_control_chord() {
+        let typed = crate::cursor_track::TYPED_KEY_CODE as u64;
+        // Control held alone: a Flare.
+        let flare = sidecar(vec![
+            key("key_down", 1_000.0, 59),
+            key("key_up", 2_500.0, 59),
+        ]);
+        assert_eq!(
+            flare_spans(&sidecar_events(&flare)),
+            vec![(1_120.0, 2_500.0)]
+        );
+        // Control with a key pressed during the hold: a shortcut, not a Flare.
+        let chord = sidecar(vec![
+            key("key_down", 1_000.0, 59),
+            key("key_down", 1_800.0, typed),
+            key("key_up", 1_850.0, typed),
+            key("key_up", 2_500.0, 59),
+        ]);
+        assert!(flare_spans(&sidecar_events(&chord)).is_empty());
+    }
+
     /// Local edition twin: no hosted links, its own scheme, and an evidence
     /// boundary written from what this recording sent.
     #[test]

@@ -1315,6 +1315,50 @@ mod tests {
     }
 
     #[test]
+    fn typing_zoom_is_unchanged_when_the_sidecar_hides_which_keys_were_typed() {
+        let burst = |key_code: fn(u16) -> u16| CursorTrack {
+            events: vec![
+                CursorEvent::Move {
+                    time_ms: 1_400.0,
+                    x: 360,
+                    y: 220,
+                    cursor_type: Some("textcursor".to_string()),
+                },
+                CursorEvent::KeyDown {
+                    time_ms: 2_000.0,
+                    key_code: key_code(0),
+                },
+                CursorEvent::KeyDown {
+                    time_ms: 2_180.0,
+                    key_code: key_code(11),
+                },
+                CursorEvent::KeyDown {
+                    time_ms: 2_360.0,
+                    key_code: key_code(8),
+                },
+                CursorEvent::KeyDown {
+                    time_ms: 2_540.0,
+                    key_code: key_code(2),
+                },
+            ],
+            sample_hz: 60,
+            coord_space: CoordSpace::LogicalMacos,
+            capture: None,
+            capture_timeline: Vec::new(),
+            capture_source: None,
+            click_elements: Vec::new(),
+        };
+        let raw = generate_zoom_segments(&burst(|code| code), 7.0, ZoomConfig::default());
+        let recorded = generate_zoom_segments(
+            &burst(crate::cursor_track::sidecar_key_code),
+            7.0,
+            ZoomConfig::default(),
+        );
+        assert_eq!(raw.len(), 1, "got {raw:?}");
+        assert_eq!(format!("{recorded:?}"), format!("{raw:?}"));
+    }
+
+    #[test]
     fn typing_extends_click_zoom_hold() {
         let track = CursorTrack {
             events: vec![

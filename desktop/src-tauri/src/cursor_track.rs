@@ -694,6 +694,34 @@ pub fn current_cursor_position() -> Option<(i32, i32)> {
 
 const KEY_STATES: usize = 128;
 
+/// The one key code the sidecar stores for every key that is not a modifier.
+/// No macOS virtual key uses 127 (they stop at 126), so it reads as "a key
+/// that is not a modifier" and never as a particular key.
+pub(crate) const TYPED_KEY_CODE: u16 = 127;
+// Checked when the crate compiles: no real key, and not a modifier, so every
+// reader that tells typing from modifiers still sees typing.
+const _: () = assert!(TYPED_KEY_CODE > 126 && (TYPED_KEY_CODE < 54 || TYPED_KEY_CODE > 63));
+
+/// The key code the sidecar records for a physical key: modifiers (54 to 63,
+/// Control is 59 and 62) keep their own code, every other key becomes
+/// [`TYPED_KEY_CODE`].
+///
+/// Everything that reads key events needs only that much: a Flare is a held
+/// Control, a key pressed during the hold makes it a chord, and a typing
+/// burst is a run of keys that are not modifiers. Which letters were pressed
+/// is the user's typed content, which Clipy does not capture (see the AXValue
+/// rule for click labels). Without this, a password or token typed during a
+/// take could be read back from `recording.cursor.json`, which the AREC points
+/// agents to, and from `recording.input-events.json`. Windows already records
+/// modifiers only.
+pub(crate) fn sidecar_key_code(key_code: u16) -> u16 {
+    if (54..=63).contains(&key_code) {
+        key_code
+    } else {
+        TYPED_KEY_CODE
+    }
+}
+
 /// Run `f` inside an autorelease pool on macOS. This thread is a bare
 /// `std::thread` with no Cocoa run loop, so nothing drains the autoreleased
 /// objects that the Accessibility / CoreGraphics calls below create on every
@@ -930,15 +958,18 @@ fn poll_loop(
                         if !pressed {
                             recorded_keys[key_code] = false;
                         }
+                        // The sidecar gets which kind of key, never which
+                        // key: see `sidecar_key_code`.
+                        let recorded_code = sidecar_key_code(key_code as u16);
                         let ev = if pressed {
                             CursorEvent::KeyDown {
                                 time_ms: now_ms,
-                                key_code: key_code as u16,
+                                key_code: recorded_code,
                             }
                         } else {
                             CursorEvent::KeyUp {
                                 time_ms: now_ms,
-                                key_code: key_code as u16,
+                                key_code: recorded_code,
                             }
                         };
                         events.lock().push(ev);
@@ -2721,6 +2752,28 @@ fn current_coord_space() -> CoordSpace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sidecar_keeps_modifier_codes_so_flares_and_chords_still_read() {
+        for code in 54..=63 {
+            assert_eq!(sidecar_key_code(code), code);
+        }
+        // Control, which is how a Flare hold is recognised.
+        assert_eq!(sidecar_key_code(59), 59);
+        assert_eq!(sidecar_key_code(62), 62);
+    }
+
+    #[test]
+    fn sidecar_never_records_which_letter_was_typed() {
+        // "hunter2" then Return, as macOS virtual key codes.
+        let typed: [u16; 8] = [4, 32, 45, 17, 14, 15, 19, 36];
+        let recorded: Vec<u16> = typed.iter().map(|&code| sidecar_key_code(code)).collect();
+        assert!(recorded.iter().all(|&code| code == TYPED_KEY_CODE));
+        // Escape, Space, Delete and the arrows are not modifiers either.
+        for code in [53, 49, 51, 123, 124, 125, 126] {
+            assert_eq!(sidecar_key_code(code), TYPED_KEY_CODE);
+        }
+    }
 
     fn listed(
         number: u32,
