@@ -176,6 +176,31 @@ describe("deepgram", () => {
     expect(r.engine).toBe("deepgram:nova-2");
   });
 
+  it("joins words without spaces for Japanese", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [
+            {
+              detected_language: "ja",
+              alternatives: [
+                {
+                  words: [
+                    { word: "こんにちは", punctuated_word: "こんにちは、", start: 0, end: 0.5 },
+                    { word: "世界", punctuated_word: "世界。", start: 0.5, end: 1.0 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(1), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 1000, text: "こんにちは、世界。" }]);
+    expect(r.language).toBe("ja");
+  });
+
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { err_msg: SECRET_TEXT }, 402));
     await expectSafeError(transcribeDeepgram(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "deepgram", 402);
@@ -233,6 +258,32 @@ describe("assemblyai", () => {
     expect(r.engine).toBe("assemblyai:universal");
   });
 
+  it("joins words without spaces for Japanese", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
+      if (req.method === "POST") {
+        return json(res, {
+          id: "t-ja",
+          status: "completed",
+          language_code: "ja",
+          words: [
+            { text: "こ", start: 100, end: 200 },
+            { text: "ん", start: 200, end: 250 },
+            { text: "に", start: 250, end: 300 },
+            { text: "ち", start: 300, end: 350 },
+            { text: "は", start: 350, end: 420 },
+            { text: "世", start: 500, end: 600 },
+            { text: "界", start: 600, end: 750 },
+          ],
+        });
+      }
+      json(res, {}, 404);
+    });
+    const r = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 });
+    expect(r.segments).toEqual([{ startMs: 100, endMs: 750, text: "こんにちは世界" }]);
+    expect(r.language).toBe("ja");
+  });
+
   it("fails cleanly when the job errors, without the provider's message", async () => {
     server = await fakeServer((req, res) => {
       if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
@@ -279,6 +330,25 @@ describe("elevenlabs", () => {
     const form = await formData(req);
     expect(form.get("model_id")).toBe("scribe_v2");
     expect((form.get("file") as File).size).toBe(44 + 6 * 32000);
+  });
+
+  it("joins words without spaces for Japanese", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        language_code: "jpn",
+        text: "今日はいい天気です。",
+        words: [
+          { text: "今日", start: 0.0, end: 0.4, type: "word" },
+          { text: "は", start: 0.4, end: 0.6, type: "word" },
+          { text: "いい", start: 0.6, end: 0.9, type: "word" },
+          { text: "天気", start: 0.9, end: 1.3, type: "word" },
+          { text: "です。", start: 1.3, end: 1.7, type: "word" },
+        ],
+      }),
+    );
+    const r = await transcribeElevenLabs(await audioInput(2), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 1700, text: "今日はいい天気です。" }]);
+    expect(r.language).toBe("jpn");
   });
 
   it("reports HTTP errors safely", async () => {

@@ -8,6 +8,7 @@ import {
   speechSecIn,
   tokensInCore,
   trimToSpeech,
+  wordJoiner,
   type ChunkPlan,
   type SilenceSpan,
 } from "../src/chunking.js";
@@ -219,6 +220,26 @@ describe("grouping", () => {
       { start: 0, end: 3.2, text: "This is first." },
       { start: 3.3, end: 4, text: "Then more" },
       { start: 6, end: 7, text: "after pause" },
+    ]);
+  });
+
+  it("picks an empty joiner only for languages written without spaces", () => {
+    for (const lang of ["ja", "jpn", "zh-CN", "zho", "yue", "th"]) {
+      expect(wordJoiner(lang)).toBe("");
+    }
+    for (const lang of ["en", "eng", "ko", undefined, null]) {
+      expect(wordJoiner(lang)).toBe(" ");
+    }
+    const jaWords = [
+      { start: 0, end: 0.4, text: "今日" },
+      { start: 0.4, end: 0.7, text: "は" },
+      { start: 0.7, end: 3.2, text: "世界。" },
+      { start: 3.3, end: 3.6, text: "また" },
+      { start: 3.6, end: 4.0, text: "ね" },
+    ];
+    expect(groupWordsIntoSegments(jaWords, wordJoiner("ja"))).toEqual([
+      { start: 0, end: 3.2, text: "今日は世界。" },
+      { start: 3.3, end: 4, text: "またね" },
     ]);
   });
 });
