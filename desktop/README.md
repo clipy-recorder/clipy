@@ -67,10 +67,17 @@ bash scripts/test-rust.sh --locked --lib   # finds the FFmpeg framework for you
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
 ```
 
-`src-tauri/crates/clipy-local-moments` (moment selection),
-`src-tauri/crates/clipy-local-stt` (transcription) and
-`src-tauri/crates/clipy-local-edition` are separate crates with their own
-`cargo test`.
+The Rust test script (`bash scripts/test-rust.sh --locked --lib`) is macOS-only because it requires the FFmpeg framework installed by `pnpm setup:native-deps`.
+
+The three local crates can be tested on macOS and Linux from the `desktop/` directory:
+
+```bash
+(cd src-tauri/crates/clipy-local-edition && cargo test --locked)
+(cd src-tauri/crates/clipy-local-moments && cargo test --locked)
+(cd src-tauri/crates/clipy-local-stt && cargo test --locked --no-default-features)
+```
+
+On Windows, the macOS-only Rust test script is not supported. The Windows CI workflow builds the app with `pnpm run build`, stages the FFmpeg DLLs and segmentation assets, stages sherpa-onnx, and runs `cargo check --locked` from `src-tauri`. This is a compile check, not a Rust test run.
 
 ## Drive it from an agent
 
