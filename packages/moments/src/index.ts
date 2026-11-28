@@ -162,6 +162,20 @@ export function boundInteractions<T>(events: readonly T[], limit = MAX_PLANNER_I
   return events.filter((_e, i) => keep.has(i));
 }
 
+/** The final event/click can land exactly at stop time, but never after it. */
+function assertRecordingBoundaries(input: LocalMomentInput): void {
+  for (const [index, event] of input.interactions.entries()) {
+    if (event.time_ms > input.durationMs) {
+      throw new RangeError(`interactions[${index}].time_ms must not exceed durationMs (${input.durationMs})`);
+    }
+  }
+  for (const [index, click] of input.clickElements.entries()) {
+    if (click.time_ms > input.durationMs) {
+      throw new RangeError(`clickElements[${index}].time_ms must not exceed durationMs (${input.durationMs})`);
+    }
+  }
+}
+
 export async function planMoments(input: LocalMomentInput, options: PlanOptions = {}): Promise<PlanResult> {
   const raw = input as { interactions?: unknown };
   const bounded =
@@ -169,6 +183,7 @@ export async function planMoments(input: LocalMomentInput, options: PlanOptions 
       ? { ...input, interactions: boundInteractions(input.interactions) }
       : input;
   const parsed = localMomentInput.parse(bounded);
+  assertRecordingBoundaries(parsed);
   const provider = options.provider ?? null;
   const signal = options.signal ?? new AbortController().signal;
   try {
