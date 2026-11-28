@@ -77,6 +77,25 @@ describe("Linux parsers", () => {
     expect(g).toEqual({ x: 10, y: -4, width: 800, height: 600, viewable: true });
     expect(parseWindowProps('_NET_WM_NAME(UTF8_STRING) = "say \\"hi\\""\nWM_CLASS(STRING) = "xterm", "XTerm"')).toEqual({ title: 'say "hi"', app: "XTerm" });
   });
+
+  it("unescapes backslashes and quotes in window titles and app names", () => {
+    const input = String.raw`_NET_WM_NAME(UTF8_STRING) = "C:\\Users\\Sam\\notes \"draft\".txt"
+  WM_CLASS(STRING) = "terminal", "My\\Terminal"`;
+
+    expect(parseWindowProps(input)).toEqual({
+      title: 'C:\\Users\\Sam\\notes "draft".txt',
+      app: "My\\Terminal",
+    });
+  });
+
+  it("unescapes a trailing backslash in the WM_NAME fallback", () => {
+    const input = String.raw`WM_NAME(STRING) = "ends with\\"`;
+
+    expect(parseWindowProps(input)).toEqual({
+      title: "ends with\\",
+      app: "",
+    });
+  });
 });
 
 describe("macOS parsers", () => {
