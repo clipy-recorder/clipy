@@ -368,4 +368,22 @@ describe("long typing sessions", () => {
     }
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
+
+  it("keeps both edges of a chord key pressed during a Control hold, or neither", () => {
+    // Minimal repro: a click pair, then a Control hold with one chord key
+    // (code 40) pressed and released inside it. Budget 5 leaves no room for
+    // the full click pair, so the thinner must drop it as a whole unit
+    // instead of splitting the chord's key_down from its key_up.
+    const events: LocalMomentInput["interactions"] = [
+      { kind: "down", time_ms: 0, button: 1, x: 1, y: 1 },
+      { kind: "up", time_ms: 1, button: 1, x: 1, y: 1 },
+      { kind: "key_down", time_ms: 2, key_code: 59 },
+      { kind: "key_down", time_ms: 3, key_code: 40 },
+      { kind: "key_up", time_ms: 4, key_code: 40 },
+      { kind: "key_up", time_ms: 5, key_code: 59 },
+    ];
+    const bounded = boundInteractions(events, 5);
+    const kept = new Set(bounded);
+    expect(kept.has(events[3])).toBe(kept.has(events[4]));
+  });
 });
