@@ -176,6 +176,16 @@ describe("deepgram", () => {
     expect(r.engine).toBe("deepgram:nova-2");
   });
 
+  it("keeps transcript text when timing data is missing", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: { channels: [{ alternatives: [{ transcript: " Hello there. ", words: [] }] }] },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(2.5), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 2500, text: "Hello there." }]);
+  });
+
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { err_msg: SECRET_TEXT }, 402));
     await expectSafeError(transcribeDeepgram(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "deepgram", 402);
@@ -279,6 +289,17 @@ describe("elevenlabs", () => {
     const form = await formData(req);
     expect(form.get("model_id")).toBe("scribe_v2");
     expect((form.get("file") as File).size).toBe(44 + 6 * 32000);
+  });
+
+  it("keeps transcript text when words lack timestamps", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        text: "Good morning.",
+        words: [{ text: "Good", start: null, end: null }, { text: "morning." }],
+      }),
+    );
+    const r = await transcribeElevenLabs(await audioInput(2.5), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 2500, text: "Good morning." }]);
   });
 
   it("reports HTTP errors safely", async () => {

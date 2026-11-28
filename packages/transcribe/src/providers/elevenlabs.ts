@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { wholePieceSegment, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 export const ELEVENLABS_DEFAULT_MODEL = "scribe_v2";
@@ -42,9 +42,10 @@ export async function transcribeElevenLabs(
   const words = (parsed.data.words ?? [])
     .filter((w) => (w.type ?? "word") === "word" && typeof w.start === "number" && typeof w.end === "number")
     .map((w) => ({ start: w.start as number, end: w.end as number, text: w.text }));
+  const segments = groupWordsIntoSegments(words);
   input.onProgress?.(1);
   return {
-    segments: toTimeline(groupWordsIntoSegments(words)),
+    segments: toTimeline(segments.length ? segments : wholePieceSegment(parsed.data.text ?? "", input.info.durationSec)),
     language: parsed.data.language_code ?? undefined,
     engine: `elevenlabs:${model}`,
     gaps: [],
