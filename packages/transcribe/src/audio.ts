@@ -55,9 +55,9 @@ function runFfmpeg(args: string[], signal?: AbortSignal, keepStderr = 64 * 1024)
         reject(
           err.code === "ENOENT"
             ? new Error(
-                "ffmpeg was not found. Install ffmpeg (https://ffmpeg.org/download.html) " +
-                  "and make sure it is on your PATH, or set CLIPY_FFMPEG to its full path.",
-              )
+              "ffmpeg was not found. Install ffmpeg (https://ffmpeg.org/download.html) " +
+              "and make sure it is on your PATH, or set CLIPY_FFMPEG to its full path.",
+            )
             : new Error(`ffmpeg could not start: ${err.code ?? err.message}`),
         ),
       );
@@ -84,31 +84,96 @@ export class NoAudioTrackError extends Error {
 
 const DURATION_RE = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 
+/** Classify common FFmpeg input errors into friendly messages. */
+function friendlyInputError(inputPath: string, stderr: string): string {
+  if (/No such file or directory/i.test(stderr)) {
+    return `${inputPath} does not exist`;
+  }
+
+  if (/Invalid data found when processing input|Invalid argument/i.test(stderr)) {
+    return `${inputPath} is not a video or audio file`;
+  }
+
+  if (/Is a directory/i.test(stderr)) {
+    return `${inputPath} is a folder`;
+  }
+
+  if (/Permission denied/i.test(stderr)) {
+    return `${inputPath} cannot be opened: permission denied`;
+  }
+
+  return `ffmpeg could not read ${inputPath}`;
+}
+
 /**
  * How long a media file is and whether it has audio, from ffmpeg's header
  * dump (the same ffmpeg as everything else here, so no ffprobe is needed).
  * A fragmented file with no header duration is decoded to its last
  * timestamp. `durationSec` is null when neither works.
  */
-export async function probeMedia(inputPath: string, signal?: AbortSignal): Promise<{ durationSec: number | null; hasAudio: boolean }> {
-  const header = await runFfmpeg(["-hide_banner", "-nostdin", "-i", ffmpegInput(inputPath)], signal, 64 * 1024);
+export async function probeMedia(
+  inputPath: string,
+  signal?: AbortSignal,
+): Promise<{ durationSec: number | null; hasAudio: boolean }> {
+  const header = await runFfmpeg(
+    ["-hide_banner", "-nostdin", "-i", ffmpegInput(inputPath)],
+    signal,
+    64 * 1024,
+  );
+
   const hasAudio = /Stream #\d+:\d+[^\n]*: Audio:/.test(header.stderr);
   const m = DURATION_RE.exec(header.stderr);
-  if (m) return { durationSec: Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]), hasAudio };
-  if (/No such file|Invalid data found|Permission denied|Error opening input/i.test(header.stderr)) {
-    throw new Error(`ffmpeg could not read ${inputPath}`);
+
+  if (m) {
+    return {
+      durationSec: Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]),
+      hasAudio,
+    };
   }
+
+  if (/No such file|Invalid data found|Permission denied|Is a directory|Error opening input/i.test(header.stderr)) {
+    throw new Error(friendlyInputError(inputPath, header.stderr));
+  }
+
   const decode = await runFfmpeg(
-    ["-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:2", "-i", ffmpegInput(inputPath), "-map", "0", "-c", "copy", "-f", "null", "-"],
+    [
+      "-hide_banner",
+      "-nostdin",
+      "-nostats",
+      "-progress",
+      "pipe:2",
+      "-i",
+      ffmpegInput(inputPath),
+      "-map",
+      "0",
+      "-c",
+      "copy",
+      "-f",
+      "null",
+      "-",
+    ],
     signal,
     16 * 1024,
   );
+
+  if (decode.code !== 0) {
+    throw new Error(friendlyInputError(inputPath, decode.stderr));
+  }
+
   const times = [...decode.stderr.matchAll(/out_time_us=(\d+)/g)];
-  return { durationSec: times.length > 0 ? Number(times[times.length - 1][1]) / 1e6 : null, hasAudio };
+
+  return {
+    durationSec: times.length > 0 ? Number(times[times.length - 1][1]) / 1e6 : null,
+    hasAudio,
+  };
 }
 
-/** ffmpeg: any video/audio file -> 16 kHz mono 16-bit WAV. Throws a clear error if ffmpeg is missing. */
-export async function extractAudio(inputPath: string, outWavPath: string, signal?: AbortSignal): Promise<void> {
+/** ffmpeg: any video/audio file -> 16 kHz mono 16-bit WAV. */
+export async function extractAudio(
+  inputPath: string,
+  outWavPath: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const { code, stderr } = await runFfmpeg(
     [
       "-hide_banner",
@@ -132,9 +197,13 @@ export async function extractAudio(inputPath: string, outWavPath: string, signal
     signal,
     4 * 1024,
   );
+
   if (code !== 0) {
-    if (/does not contain any stream|Output file #0 does not contain|matches no streams/i.test(stderr)) throw new NoAudioTrackError(inputPath);
-    throw new Error(`ffmpeg could not read the audio in ${inputPath} (exit ${code})`);
+    if (/does not contain any stream|Output file #0 does not contain|matches no streams/i.test(stderr)) {
+      throw new NoAudioTrackError(inputPath);
+    }
+
+    throw new Error(friendlyInputError(inputPath, stderr));
   }
 }
 

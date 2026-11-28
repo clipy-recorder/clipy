@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -11,14 +11,21 @@ const dir = tempDir();
 const video = join(dir, "clip.mp4");
 const gappy = join(dir, "gappy.m4a");
 const silentVideo = join(dir, "silent.mp4");
+const textFile = join(dir, "not-video.txt");
+const folder = join(dir, "media-folder");
+const missingFile = join(dir, "missing.mp4");
 
 function ff(args: string[]) {
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args]);
 }
 
 beforeAll(() => {
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(textFile, "This is not a video file.");
+
   // 3 s of 48 kHz stereo tone with a small video track.
   ff(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-f", "lavfi", "-i", "color=c=blue:s=64x64:d=3", "-ac", "2", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", video]);
+
   // tone 2 s, silence 2 s, tone 2 s
   ff([
     "-f", "lavfi", "-i", "sine=frequency=300:duration=2",
@@ -27,11 +34,13 @@ beforeAll(() => {
     "-filter_complex", "[0:a]aresample=44100[a];[2:a]aresample=44100[c];[a][1:a][c]concat=n=3:v=0:a=1",
     "-c:a", "aac", gappy,
   ]);
+
   ff(["-f", "lavfi", "-i", "color=c=red:s=64x64:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", silentVideo]);
 });
 
 describe("extractAudio", () => {
   const prev = process.env.CLIPY_FFMPEG;
+
   afterEach(() => {
     if (prev === undefined) delete process.env.CLIPY_FFMPEG;
     else process.env.CLIPY_FFMPEG = prev;
@@ -61,6 +70,20 @@ describe("extractAudio", () => {
     const ac = new AbortController();
     ac.abort();
     await expect(extractAudio(video, join(dir, "z.wav"), ac.signal)).rejects.toThrow(/cancelled/);
+  });
+
+  it("gives friendly errors for invalid input files", async () => {
+    await expect(extractAudio(missingFile, join(dir, "missing.wav"))).rejects.toThrow(
+      /does not exist/i,
+    );
+
+    await expect(extractAudio(textFile, join(dir, "text.wav"))).rejects.toThrow(
+      /not a video or audio file/i,
+    );
+
+    await expect(extractAudio(folder, join(dir, "folder.wav"))).rejects.toThrow(
+      /is a folder/i,
+    );
   });
 });
 
@@ -97,5 +120,10 @@ describe("transcribe with transcription off", () => {
     expect(r.gaps[0].endMs).toBeGreaterThan(2900);
     expect(stages).toContain("extract");
     expect(readdirSync(scratch)).toEqual([]);
+  });
+  it("returns a friendly error when the input file is missing", async () => {
+    await expect(
+      transcribe(missingFile, { kind: "none" }),
+    ).rejects.toThrow(/missing\.mp4 does not exist/i);
   });
 });
