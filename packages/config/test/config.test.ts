@@ -232,6 +232,29 @@ describe("transcription presets", () => {
     });
   });
 
+  it("rejects invalid or non-HTTP CLIPY_TRANSCRIBE_BASE_URL values without quoting them or saved keys", () => {
+    saveConfig({ transcription: { kind: "openai", apiKey: "sk-secret-file-key" } }, env);
+    for (const badUrl of [
+      "not-a-url-secret",
+      "127.0.0.1:8000/v1",
+      "ftp://secret-token@example.com/v1",
+      "file:///etc/passwd",
+      "javascript:alert(1)",
+    ]) {
+      const error = errorOf(() =>
+        loadConfig({
+          ...env,
+          CLIPY_TRANSCRIBE: "openai-compatible",
+          CLIPY_TRANSCRIBE_BASE_URL: badUrl,
+        }),
+      );
+      expect(error.message).toMatch(/http:\/\/ or https:\/\/ URL/);
+      expect(error.message).toContain(file);
+      expect(error.message).not.toContain(badUrl);
+      expect(error.message).not.toContain("sk-secret-file-key");
+    }
+  });
+
   it("picks the multilingual local model", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
