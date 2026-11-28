@@ -1,0 +1,92 @@
+[
+  {
+    "name": "plain JSON object unchanged",
+    "input": "{\"moments\":[]}",
+    "expected": "{\"moments\":[]}"
+  },
+  {
+    "name": "plain JSON array unchanged",
+    "input": "[1,2]",
+    "expected": "[1,2]"
+  },
+  {
+    "name": "leading and trailing whitespace around plain JSON unchanged",
+    "input": "  {\"a\":1}  \n",
+    "expected": "  {\"a\":1}  \n"
+  },
+  {
+    "name": "plain JSON with embedded triple backticks unchanged",
+    "input": "{\"moments\":[{\"timestamp_ms\":0,\"reason\":\"use ```json\\n{}\\n``` here\"}]}",
+    "expected": "{\"moments\":[{\"timestamp_ms\":0,\"reason\":\"use ```json\\n{}\\n``` here\"}]}"
+  },
+  {
+    "name": "json-labelled fence",
+    "input": "```json\n{\"a\":1}\n```",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "uppercase JSON-labelled fence with surrounding whitespace",
+    "input": "  ```JSON {} ```  ",
+    "expected": "{}"
+  },
+  {
+    "name": "unlabelled fence",
+    "input": "```\n[]\n```",
+    "expected": "[]"
+  },
+  {
+    "name": "prose before fenced JSON",
+    "input": "Here are the moments:\n\n```json\n{\"moments\":[{\"timestamp_ms\":100,\"reason\":\"click\"}]}\n```",
+    "expected": "{\"moments\":[{\"timestamp_ms\":100,\"reason\":\"click\"}]}"
+  },
+  {
+    "name": "prose before and after fenced JSON",
+    "input": "Here are the moments:\n```json\n{\"a\":1}\n```\nLet me know if you need anything else.",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "inline prose-wrapped fenced JSON",
+    "input": "Result: ```json {\"a\":1} ``` done.",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "non-JSON fence before JSON fence",
+    "input": "```ts\nconst x = 1;\n```\n\n```json\n{\"a\":1}\n```",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "unlabelled fence before JSON fence prefers JSON fence",
+    "input": "```\nignored\n```\n\n```json\n{\"a\":1}\n```",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "only non-JSON-labelled fence unchanged",
+    "input": "```rust\nfn main() {}\n```",
+    "expected": "```rust\nfn main() {}\n```"
+  },
+  {
+    "name": "multiple JSON-labelled fences take the first",
+    "input": "```json\n{\"a\":1}\n```\n\n```json\n{\"b\":2}\n```",
+    "expected": "{\"a\":1}"
+  },
+  {
+    "name": "unclosed fence unchanged",
+    "input": "```{}",
+    "expected": "```{}"
+  },
+  {
+    "name": "prose before unclosed fence unchanged",
+    "input": "Here are the moments:\n```json\n{\"a\":1}",
+    "expected": "Here are the moments:\n```json\n{\"a\":1}"
+  },
+  {
+    "name": "empty fence returns empty string",
+    "input": "``````",
+    "expected": ""
+  },
+  {
+    "name": "empty json-labelled fence returns empty string",
+    "input": "```json\n```",
+    "expected": ""
+  }
+]

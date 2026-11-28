@@ -101,9 +101,38 @@ export interface ChatOptions {
   messages: ChatMessage[];
 }
 
-function stripCodeFence(text: string): string {
-  const fenced = /^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$/i.exec(text);
-  return fenced ? fenced[1] : text;
+export function stripCodeFence(text: string): string {
+  const trimmedStart = text.trimStart();
+  if (trimmedStart.startsWith("{") || trimmedStart.startsWith("[")) {
+    return text;
+  }
+  let firstUnlabelled: string | null = null;
+  let pos = 0;
+  for (;;) {
+    const open = text.indexOf("```", pos);
+    if (open < 0) break;
+    const afterOpen = open + 3;
+    let labelEnd = afterOpen;
+    while (labelEnd < text.length && !/\s/.test(text[labelEnd]) && !text.startsWith("```", labelEnd)) {
+      labelEnd += 1;
+    }
+    const label = text.slice(afterOpen, labelEnd);
+    let bodyStart = labelEnd;
+    while (bodyStart < text.length && /\s/.test(text[bodyStart])) {
+      bodyStart += 1;
+    }
+    const close = text.indexOf("```", bodyStart);
+    if (close < 0) break;
+    const inner = text.slice(bodyStart, close).trimEnd();
+    if (label.toLowerCase() === "json") {
+      return inner;
+    }
+    if (label === "" && firstUnlabelled === null) {
+      firstUnlabelled = inner;
+    }
+    pos = close + 3;
+  }
+  return firstUnlabelled ?? text;
 }
 
 export async function chatJSON<T = unknown>(opts: ChatOptions): Promise<{ parsed: T; raw: { text: string } }> {
