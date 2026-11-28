@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="80" viewBox="0 0 400 80" role="img" aria-label="Add Clipy to Chrome, free to start">
+  <title>Add Clipy to Chrome, free to start</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B7DE9"/>
+      <stop offset="1" stop-color="#1A66D2"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="398" height="78" rx="16" fill="url(#bg)" stroke="#1557B0" stroke-width="2"/>
+  <circle cx="44" cy="40" r="26" fill="#FFFFFF"/>
+  <g transform="translate(12 8)">
+    <path d="M32 32 L49.32 22 A20 20 0 0 0 14.68 22 Z" fill="#EA4335"/>
+    <path d="M32 32 L14.68 22 A20 20 0 0 0 32 52 Z" fill="#34A853"/>
+    <path d="M32 32 L32 52 A20 20 0 0 0 49.32 22 Z" fill="#FBBC04"/>
+    <circle cx="32" cy="32" r="9.5" fill="#FFFFFF"/>
+    <circle cx="32" cy="32" r="7.5" fill="#1A73E8"/>
+  </g>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" fill="#FFFFFF">
+    <text x="88" y="37" font-size="25" font-weight="700">Add to Chrome</text>
+    <text x="88" y="59" font-size="15" font-weight="500" fill-opacity="0.92">Free to start · Try it in your browser</text>
+  </g>
+  <path d="M362 31 L371 40 L362 49" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

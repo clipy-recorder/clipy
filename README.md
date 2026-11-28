@@ -40,11 +40,12 @@
 </p>
 
 <p align="center">
-	<a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl"><img src="https://img.shields.io/badge/Add_to_Chrome-free_to_start-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Add Clipy to Chrome"></a>
+	<a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl"><img src=".github/assets/add-to-chrome.svg" width="400" alt="Add Clipy to Chrome, free to start"></a>
 </p>
 
 <p align="center">
-	<b>Try it in your browser.</b> Install the <a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl">Chrome extension</a>, record a bug, share the link, and see how Clipy turns it into something your team and your AI agent can act on.
+	<b>Highly recommended: start with the Chrome extension.</b><br>
+	It is the quickest way to get a feel for Clipy. Record a bug, share the link, and see how your team and your AI agent act on it. Free to start.
 </p>
 
 ## Give your AI agent eyes in 30 seconds
@@ -323,6 +324,15 @@ running on your machine with Ollama or LM Studio.
 | A transcription key (OpenAI, Groq, Deepgram, AssemblyAI, ElevenLabs or Gemini) | The audio goes to that provider, under its terms. |
 
 ## Contribute
+
+<p align="center">
+	<a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl"><img src=".github/assets/add-to-chrome.svg" width="400" alt="Add Clipy to Chrome, free to start"></a>
+</p>
+
+<p align="center">
+	<b>Before you pick an issue, install the Chrome extension.</b><br>
+	Record a few things with it and share a link. Ten minutes of using Clipy is the fastest way to understand what you are about to change.
+</p>
 
 Clipy grows with the people who use it. Every issue and pull request gets a
 first response within a working day. [CONTRIBUTING.md](CONTRIBUTING.md) gets you
