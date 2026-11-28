@@ -40,6 +40,8 @@ export interface CaptureOptions {
   fps?: number;
   /** Stop automatically after this many seconds. */
   maxSeconds?: number;
+  /** Draw the cursor in the recorded video. Default: true. */
+  cursor?: boolean;
   /** false (default), true (default device) or a device name. */
   microphone?: boolean | string;
   /** Linux only, e.g. ":99". Default: $DISPLAY. */

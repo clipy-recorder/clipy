@@ -102,6 +102,35 @@ describe("buildFfmpegArgs", () => {
     const args = buildFfmpegArgs({ ...base, video: { backend: "ddagrab", outputIndex: 0 } });
     expect(args.slice(-7)).toEqual(["-flush_packets", "1", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "/tmp/out.mp4"]);
   });
+
+  it("draws the cursor by default and when cursor is true", () => {
+    expect(after(buildFfmpegArgs({ ...base, video: { backend: "x11grab", xDisplay: ":0" } }), "-draw_mouse")).toBe("1");
+    expect(after(buildFfmpegArgs({ ...base, cursor: true, video: { backend: "x11grab", xDisplay: ":0" } }), "-draw_mouse")).toBe("1");
+    expect(after(buildFfmpegArgs({ ...base, video: { backend: "avfoundation", device: "3" } }), "-capture_cursor")).toBe("1");
+    expect(after(buildFfmpegArgs({ ...base, video: { backend: "ddagrab", outputIndex: 0 } }), "-i")).toBe("ddagrab=output_idx=0:framerate=30:draw_mouse=1");
+    expect(after(buildFfmpegArgs({ ...base, video: { backend: "gdigrab" } }), "-draw_mouse")).toBe("1");
+  });
+
+  it("hides the cursor for x11grab when cursor is false", () => {
+    const args = buildFfmpegArgs({ ...base, cursor: false, video: { backend: "x11grab", xDisplay: ":0" } });
+    expect(after(args, "-draw_mouse")).toBe("0");
+  });
+
+  it("hides the cursor and click rings for avfoundation when cursor is false", () => {
+    const args = buildFfmpegArgs({ ...base, cursor: false, video: { backend: "avfoundation", device: "3" } });
+    expect(after(args, "-capture_cursor")).toBe("0");
+    expect(after(args, "-capture_mouse_clicks")).toBe("0");
+  });
+
+  it("hides the cursor for ddagrab when cursor is false", () => {
+    const args = buildFfmpegArgs({ ...base, cursor: false, video: { backend: "ddagrab", outputIndex: 0 } });
+    expect(after(args, "-i")).toBe("ddagrab=output_idx=0:framerate=30:draw_mouse=0");
+  });
+
+  it("hides the cursor for gdigrab when cursor is false", () => {
+    const args = buildFfmpegArgs({ ...base, cursor: false, video: { backend: "gdigrab" } });
+    expect(after(args, "-draw_mouse")).toBe("0");
+  });
 });
 
 describe("pickH264Encoder", () => {
