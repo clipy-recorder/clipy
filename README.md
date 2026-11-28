@@ -30,13 +30,17 @@
 </p>
 
 <p align="center">
-	<a href="https://x.com/clipysupport">X</a>
-	 |
-	<a href="https://www.linkedin.com/company/clipyonline/">LinkedIn</a>
-	 |
-	<a href="https://www.producthunt.com/products/clipy-2">Product Hunt</a>
-	 |
-	<a href="https://www.facebook.com/people/Clipy/61571411081419/">Facebook</a>
+    <a href="https://x.com/clipysupport">X</a>
+    |
+    <a href="https://www.linkedin.com/company/clipyonline/">LinkedIn</a>
+    |
+    <a href="https://www.producthunt.com/products/clipy-2">Product Hunt</a>
+    |
+    <a href="https://www.facebook.com/people/Clipy/61571411081419/">Facebook</a>
+    |
+    <a href="https://apps.apple.com/app/clipy-screen-recorder/id6836756677">iPhone & iPad</a>
+    |
+    <a href="https://play.google.com/store/apps/details?id=online.clipy.android">Android</a>
 </p>
 
 <p align="center">
@@ -180,21 +184,25 @@ agent the [agent-readable version](https://clipy.online/video/f8lshuommnk5.arec)
 
 | App | Get it |
 | --- | --- |
-| Desktop app for macOS and Windows | [clipy.online/download](https://clipy.online/download), or build it from this repository (below) |
+| Desktop app for macOS and Windows | [Download Clipy](https://clipy.online/download), or build it from this repository (below) |
+| iPhone and iPad | [App Store](https://apps.apple.com/app/clipy-screen-recorder/id6836756677) |
+| Android | [Google Play](https://play.google.com/store/apps/details?id=online.clipy.android) |
 | Chrome extension | [Chrome Web Store](https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl) |
-| iPhone, iPad and Android | [clipy.online/download](https://clipy.online/download) |
 | Command line (macOS, Windows, Linux) | `npm i -g @clipy/cli` |
-| In the browser, nothing to install | [clipy.online](https://clipy.online) |
+| Web app | [Clipy Online](https://clipy.online/) |
 
 The full product docs live at [clipy.online/docs](https://clipy.online/docs).
 
 ## Record with the Clipy app
 
-1. Download Clipy from [clipy.online/download](https://clipy.online/download)
-   or add the [Chrome extension](https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl).
+1. Get Clipy for your device:
+   - [iPhone and iPad (App Store)](https://apps.apple.com/app/clipy-screen-recorder/id6836756677)
+   - [Android (Google Play)](https://play.google.com/store/apps/details?id=online.clipy.android)
+   - [Desktop app (macOS and Windows)](https://clipy.online/download)
+   - [Web app](https://clipy.online/)
+   - Or add the [Chrome extension](https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl).
 2. Pick a tab, window or screen, and turn the camera and mic on or off.
-3. Record and talk. Draw on the page, or hold Control in the desktop app to
-   highlight what you mean.
+3. Record and talk. Draw on the page, or hold Control in the desktop app to highlight what you mean.
 4. Stop. The link is already copied.
 5. Send it to a person, or paste it into your AI agent.
 
@@ -203,12 +211,17 @@ The full product docs live at [clipy.online/docs](https://clipy.online/docs).
 We build Clipy with the people who use it. Tell us how the Chrome extension,
 the iPhone and Android apps, the web app and the desktop app work for you.
 
-1. Get the [Chrome extension](https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl), or the apps from
-   [clipy.online/download](https://clipy.online/download).
+1. Get Clipy for your device:
+   - [iPhone and iPad (App Store)](https://apps.apple.com/app/clipy-screen-recorder/id6836756677)
+   - [Android (Google Play)](https://play.google.com/store/apps/details?id=online.clipy.android)
+   - [Desktop app](https://clipy.online/download)
+   - [Web app](https://clipy.online/)
+   - [Chrome extension](https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl).
 2. Use it for something real: a bug report, a demo, a walkthrough for a
    teammate.
-3. When something does not work the way you expected, record it with Clipy
-   and [send an app report](https://github.com/clipy-recorder/clipy/issues/new?template=app_bug_report.yml) with the share link. Ideas go in a
+3. When something does not work as expected, record it with Clipy and
+   [send an app report](https://github.com/clipy-recorder/clipy/issues/new?template=app_bug_report.yml)
+   with the share link. Ideas go in a
    [feature request](https://github.com/clipy-recorder/clipy/issues/new?template=feature_request.yml)
    or in [Discussions](https://github.com/clipy-recorder/clipy/discussions).
 

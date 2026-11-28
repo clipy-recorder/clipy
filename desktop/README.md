@@ -12,10 +12,14 @@ repository. It is built with Tauri 2 (Rust) and a Vite + React window.
 
 Clipy Local is not the Clipy app. The full Clipy app, with share links anyone
 can watch, AI with no keys to manage, search across all your recordings and
-team workspaces, is a separate download at
-[clipy.online/download](https://clipy.online/download). The two can be
-installed side by side.
+team workspaces, is available on multiple platforms:
 
+- [Desktop app (macOS and Windows)](https://clipy.online/download)
+- [iPhone and iPad (App Store)](https://apps.apple.com/app/clipy-screen-recorder/id6836756677)
+- [Android (Google Play)](https://play.google.com/store/apps/details?id=online.clipy.android)
+- [Web app](https://clipy.online/)
+
+The desktop app and Clipy Local can be installed side by side.
 ## Build it
 
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
