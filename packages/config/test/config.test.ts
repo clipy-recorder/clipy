@@ -218,6 +218,12 @@ describe("transcription presets", () => {
     });
   });
 
+    it("rejects a transcription base URL from the env var that is not http(s)", () => {
+    for (const url of ["localhost:8000/v1", "ftp://example.com/v1", "not a url"]) {
+      const error = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_BASE_URL: url, CLIPY_TRANSCRIBE_MODEL: "large-v3" }));
+      expect(error.message).toBe("CLIPY_TRANSCRIBE_BASE_URL must be an http:// or https:// URL.");
+    }
+  });
   it("drops the saved transcription key when the base URL moves", () => {
     saveConfig({ transcription: { kind: "openai", apiKey: "sk-file" } }, env);
     expect(loadConfig({ ...env, CLIPY_TRANSCRIBE_BASE_URL: "https://api.openai.com/v1" }).transcription).toMatchObject({
