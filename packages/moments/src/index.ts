@@ -85,8 +85,9 @@ interface EdgeEvent {
 /**
  * Button, key and annotation events thinned to `budget` without changing
  * what the gesture rules see: every Control and annotation event, and every
- * non-modifier key press during a Control hold (it makes a chord), are kept;
- * other key presses and clicks are dropped only as whole down/up pairs.
+ * non-modifier key press during a Control hold (it makes a chord) with its
+ * release, are kept; other key presses and clicks are dropped only as whole
+ * down/up pairs.
  */
 function thinEdges<T>(events: readonly T[], edges: number[], budget: number): number[] {
   if (edges.length <= budget) return edges;
@@ -95,6 +96,10 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
   const ordered = [...edges].sort((a, b) => time(a) - time(b) || a - b);
   const kept: number[] = [];
   const units: number[][] = [];
+  // Presses waiting for their release, oldest first, per key code or button:
+  // the index of the press's unit, or CHORD for a chord press, which is kept
+  // and whose release is kept with it.
+  const CHORD = -1;
   const openKeys = new Map<unknown, number[]>();
   const openButtons = new Map<unknown, number[]>();
   let held = 0;
@@ -108,6 +113,8 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
       held = e.kind === "key_down" ? held + 1 : 0;
     } else if (e.kind === "key_down" && held > 0 && typeof code === "number" && !isModifierKeycode(code)) {
       kept.push(i);
+      if (!openKeys.has(code)) openKeys.set(code, []);
+      openKeys.get(code)!.push(CHORD);
     } else if (e.kind === "key_down" || e.kind === "down") {
       const open = e.kind === "key_down" ? openKeys : openButtons;
       const id = e.kind === "key_down" ? code : e.button;
@@ -120,7 +127,8 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
       const id = e.kind === "key_up" ? code : e.button;
       const pending = open.get(id);
       const unitIndex = pending?.shift();
-      if (unitIndex !== undefined) units[unitIndex].push(i);
+      if (unitIndex === CHORD) kept.push(i);
+      else if (unitIndex !== undefined) units[unitIndex].push(i);
       else units.push([i]);
     }
   }
