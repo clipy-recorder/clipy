@@ -3,16 +3,19 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline, type RelativeSegment } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { speakerField, type AudioInput, type EngineOutput } from "./common.js";
 
 export const DEEPGRAM_BASE_URL = "https://api.deepgram.com";
 export const DEEPGRAM_DEFAULT_MODEL = "nova-3";
 
-const Word = z.object({ start: z.number(), end: z.number(), word: z.string(), punctuated_word: z.string().optional() }).passthrough();
+const SpeakerId = z.union([z.number(), z.string()]).nullish();
+const Word = z
+  .object({ start: z.number(), end: z.number(), word: z.string(), punctuated_word: z.string().optional(), speaker: SpeakerId })
+  .passthrough();
 const Answer = z.object({
   results: z
     .object({
-      utterances: z.array(z.object({ start: z.number(), end: z.number(), transcript: z.string() }).passthrough()).nullish(),
+      utterances: z.array(z.object({ start: z.number(), end: z.number(), transcript: z.string(), speaker: SpeakerId }).passthrough()).nullish(),
       channels: z
         .array(
           z
@@ -29,7 +32,7 @@ const Answer = z.object({
 
 export async function transcribeDeepgram(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
+  config: { apiKey: string; model?: string; baseUrl?: string; diarize?: boolean },
 ): Promise<EngineOutput> {
   const provider = "deepgram";
   const model = config.model || DEEPGRAM_DEFAULT_MODEL;
@@ -40,6 +43,7 @@ export async function transcribeDeepgram(
     utterances: "true",
     detect_language: "true",
   });
+  if (config.diarize) params.set("diarize", "true");
   const url = `${joinUrl(config.baseUrl || DEEPGRAM_BASE_URL, "v1/listen")}?${params}`;
   const audio = await readFile(input.wavPath);
   const raw = await requestJson(
@@ -54,10 +58,12 @@ export async function transcribeDeepgram(
   let segments: RelativeSegment[];
   const utterances = parsed.data.results.utterances;
   if (utterances && utterances.length > 0) {
-    segments = utterances.map((u) => ({ start: u.start, end: u.end, text: u.transcript }));
+    segments = utterances.map((u) => ({ start: u.start, end: u.end, text: u.transcript, ...speakerField(u.speaker, config.diarize) }));
   } else {
     const words = channel?.alternatives?.[0]?.words ?? [];
-    segments = groupWordsIntoSegments(words.map((w) => ({ start: w.start, end: w.end, text: w.punctuated_word ?? w.word })));
+    segments = groupWordsIntoSegments(
+      words.map((w) => ({ start: w.start, end: w.end, text: w.punctuated_word ?? w.word, ...speakerField(w.speaker, config.diarize) })),
+    );
   }
   input.onProgress?.(1);
   return {

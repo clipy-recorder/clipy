@@ -158,6 +158,7 @@ export interface RelativeSegment {
   start: number;
   end: number;
   text: string;
+  speaker?: string;
 }
 
 export interface PieceResult {
@@ -171,7 +172,7 @@ export interface PieceResult {
  * transcribed twice), then sort and nudge so segments never overlap.
  */
 export function mergePieces(pieces: PieceResult[]): TranscriptSegment[] {
-  const kept: Array<{ start: number; end: number; text: string }> = [];
+  const kept: Array<{ start: number; end: number; text: string; speaker?: string }> = [];
   for (const { plan, segments } of pieces) {
     for (const s of segments) {
       const start = s.start + plan.extractStartSec;
@@ -179,7 +180,7 @@ export function mergePieces(pieces: PieceResult[]): TranscriptSegment[] {
       const centre = (start + end) / 2;
       if (centre < plan.keepStartSec || centre >= plan.keepEndSec) continue;
       const text = s.text.trim();
-      if (text) kept.push({ start, end, text });
+      if (text) kept.push({ start, end, text, ...(s.speaker !== undefined ? { speaker: s.speaker } : {}) });
     }
   }
   kept.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -189,7 +190,7 @@ export function mergePieces(pieces: PieceResult[]): TranscriptSegment[] {
     let startMs = Math.round(s.start * 1000);
     if (prev && startMs < prev.endMs) startMs = prev.endMs;
     const endMs = Math.max(Math.round(s.end * 1000), startMs);
-    out.push({ startMs, endMs, text: s.text });
+    out.push({ startMs, endMs, text: s.text, ...(s.speaker !== undefined ? { speaker: s.speaker } : {}) });
   }
   return out;
 }
@@ -269,17 +270,20 @@ export interface TimedWord {
   start: number;
   end: number;
   text: string;
+  speaker?: string;
 }
 
 const SENTENCE_END = /[.!?。！？]["')\]]*$/;
 
 /**
- * Group words into readable segments: break at a sentence end once a segment
- * has a few seconds in it, at a long pause, or once it runs too long.
+ * Group words into readable segments: break at a speaker change, at a sentence
+ * end once a segment has a few seconds in it, at a long pause, or once it runs
+ * too long.
  */
 export function groupWordsIntoSegments(words: TimedWord[], joiner = " "): RelativeSegment[] {
   const segs: RelativeSegment[] = [];
   let cur: TimedWord[] = [];
+  let curSpeaker: string | undefined;
   const flush = () => {
     if (cur.length === 0) return;
     const text = cur
@@ -288,13 +292,29 @@ export function groupWordsIntoSegments(words: TimedWord[], joiner = " "): Relati
       .join(joiner)
       .replace(/\s+([,.!?;:])/g, "$1")
       .trim();
-    if (text) segs.push({ start: cur[0].start, end: Math.max(cur[cur.length - 1].end, cur[0].start), text });
+    if (text) {
+      segs.push({
+        start: cur[0].start,
+        end: Math.max(cur[cur.length - 1].end, cur[0].start),
+        text,
+        ...(curSpeaker !== undefined ? { speaker: curSpeaker } : {}),
+      });
+    }
     cur = [];
+    curSpeaker = undefined;
   };
   for (const w of words) {
     if (!w.text.trim()) continue;
     const last = cur[cur.length - 1];
-    if (last && (w.start - last.end > SEGMENT_GAP_SEC || w.end - cur[0].start > SEGMENT_MAX_SEC)) flush();
+    if (
+      last &&
+      (w.start - last.end > SEGMENT_GAP_SEC ||
+        w.end - cur[0].start > SEGMENT_MAX_SEC ||
+        (curSpeaker !== undefined && w.speaker !== undefined && w.speaker !== curSpeaker))
+    ) {
+      flush();
+    }
+    if (w.speaker !== undefined) curSpeaker ??= w.speaker;
     cur.push(w);
     if (SENTENCE_END.test(w.text.trim()) && w.end - cur[0].start >= 3) flush();
   }

@@ -167,6 +167,24 @@ describe("mergePieces", () => {
     const merged = mergePieces([{ plan: plan[0], segments: [{ start: 1, end: 3, text: "a" }, { start: 2.5, end: 4, text: "b" }] }]);
     expect(merged[1]).toEqual({ startMs: 3000, endMs: 4000, text: "b" });
   });
+
+  it("preserves optional speaker labels when present", () => {
+    const plan = planChunks([], 10, LOCAL_CHUNKING["english-fast"]);
+    const merged = mergePieces([
+      {
+        plan: plan[0],
+        segments: [
+          { start: 0, end: 1, text: "hi", speaker: "0" },
+          { start: 1, end: 2, text: "plain" },
+        ],
+      },
+    ]);
+    expect(merged).toEqual([
+      { startMs: 0, endMs: 1000, text: "hi", speaker: "0" },
+      { startMs: 1000, endMs: 2000, text: "plain" },
+    ]);
+    expect("speaker" in merged[1]).toBe(false);
+  });
 });
 
 describe("grouping", () => {
@@ -219,6 +237,19 @@ describe("grouping", () => {
       { start: 0, end: 3.2, text: "This is first." },
       { start: 3.3, end: 4, text: "Then more" },
       { start: 6, end: 7, text: "after pause" },
+    ]);
+  });
+
+  it("splits segments on speaker changes and preserves speaker labels", () => {
+    const words = [
+      { start: 0, end: 0.4, text: "Hello", speaker: "A" },
+      { start: 0.45, end: 0.8, text: "team.", speaker: "A" },
+      { start: 0.85, end: 1.2, text: "Hi", speaker: "B" },
+      { start: 1.25, end: 1.6, text: "Alex.", speaker: "B" },
+    ];
+    expect(groupWordsIntoSegments(words)).toEqual([
+      { start: 0, end: 0.8, text: "Hello team.", speaker: "A" },
+      { start: 0.85, end: 1.6, text: "Hi Alex.", speaker: "B" },
     ]);
   });
 });
