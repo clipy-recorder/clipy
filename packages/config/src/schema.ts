@@ -7,7 +7,7 @@ export const LOCAL_TRANSCRIPTION_MODELS = ["english-fast", "multilingual"] as co
 export type LocalTranscriptionModel = (typeof LOCAL_TRANSCRIPTION_MODELS)[number];
 
 /** Hosted transcription services that take only a key (and optionally a model). */
-export const KEYED_TRANSCRIPTION_KINDS = ["deepgram", "assemblyai", "elevenlabs", "gemini"] as const;
+export const KEYED_TRANSCRIPTION_KINDS = ["deepgram", "assemblyai", "elevenlabs", "gemini", "revai"] as const;
 
 /** Every value `transcription.kind` and `CLIPY_TRANSCRIBE` accept. */
 export const TRANSCRIPTION_KINDS = [

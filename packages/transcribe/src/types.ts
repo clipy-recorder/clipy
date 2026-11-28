@@ -20,7 +20,7 @@ export type TranscriptionConfig =
   | { kind: "local"; model: LocalModelId }
   | { kind: "openai-compatible"; baseUrl: string; apiKey: string; model: string }
   | {
-      kind: "deepgram" | "assemblyai" | "elevenlabs" | "gemini";
+      kind: "deepgram" | "assemblyai" | "elevenlabs" | "gemini" | "revai";
       apiKey: string;
       model?: string;
       baseUrl?: string;
