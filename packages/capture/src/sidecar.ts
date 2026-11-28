@@ -62,8 +62,10 @@ const BUTTONS: [bit: number, button: number][] = [
  * - A move is emitted only when the position changes. The position held when
  *   recording starts is emitted once at time 0.
  * - A button that goes down during the recording emits `down`, and `up` when
- *   it is released. A button already held at start emits nothing until it is
- *   pressed again, so every `up` has its `down`.
+ *   it is released (or at `endedAt`, at the last known position, if still
+ *   held when the recording stops). A button already held at start emits
+ *   nothing until it is pressed again, so every `up` has its `down`, and
+ *   when `endedAt` is given every `down` has an `up`.
  */
 export function samplesToEvents(samples: readonly PointerSample[], startedAt: number, endedAt?: number): InteractionEvent[] {
   const sorted = [...samples].sort((a, b) => a.t - b.t);
@@ -104,6 +106,14 @@ export function samplesToEvents(samples: readonly PointerSample[], startedAt: nu
       }
     }
     buttons = s.buttons;
+  }
+  if (endedAt !== undefined && last && down.size > 0) {
+    const endTime = Math.round(endedAt - startedAt);
+    for (const [, button] of BUTTONS) {
+      if (down.has(button)) {
+        events.push({ kind: "up", time_ms: endTime, x: last.x, y: last.y, button });
+      }
+    }
   }
   return events;
 }

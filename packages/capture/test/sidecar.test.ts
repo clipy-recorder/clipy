@@ -67,8 +67,36 @@ describe("samplesToEvents", () => {
     expect(events.map((e) => e.time_ms)).toEqual([0, 50, 100]);
   });
 
+  it("closes buttons still held at endedAt at the last known position", () => {
+    const events = samplesToEvents(
+      [s(0, 10, 10), s(50, 10, 10, 1), s(100, 25, 40, 3), s(600, 99, 99, 0)],
+      T0,
+      T0 + 500,
+    );
+    expect(events).toEqual([
+      { kind: "move", time_ms: 0, x: 10, y: 10 },
+      { kind: "down", time_ms: 50, x: 10, y: 10, button: 1 },
+      { kind: "move", time_ms: 100, x: 25, y: 40 },
+      { kind: "down", time_ms: 100, x: 25, y: 40, button: 2 },
+      { kind: "up", time_ms: 500, x: 25, y: 40, button: 1 },
+      { kind: "up", time_ms: 500, x: 25, y: 40, button: 2 },
+    ]);
+  });
+
+  it("does not close a button held since before start or when endedAt is omitted", () => {
+    expect(samplesToEvents([s(-50, 1, 1, 1), s(0, 1, 1, 1), s(50, 2, 2, 1)], T0, T0 + 200)).toEqual([
+      { kind: "move", time_ms: 0, x: 1, y: 1 },
+      { kind: "move", time_ms: 50, x: 2, y: 2 },
+    ]);
+    expect(samplesToEvents([s(0, 10, 10), s(50, 10, 10, 1)], T0)).toEqual([
+      { kind: "move", time_ms: 0, x: 10, y: 10 },
+      { kind: "down", time_ms: 50, x: 10, y: 10, button: 1 },
+    ]);
+  });
+
   it("returns nothing without samples", () => {
     expect(samplesToEvents([], T0)).toEqual([]);
+    expect(samplesToEvents([], T0, T0 + 500)).toEqual([]);
   });
 });
 
