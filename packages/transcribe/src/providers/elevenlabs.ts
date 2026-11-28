@@ -20,8 +20,7 @@ const Answer = z
 
 export async function transcribeElevenLabs(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
-): Promise<EngineOutput> {
+  config: { apiKey: string; model?: string; baseUrl?: string; language?: string },): Promise<EngineOutput> {
   const provider = "elevenlabs";
   const model = config.model || ELEVENLABS_DEFAULT_MODEL;
   const audio = await readFile(input.wavPath);
@@ -30,6 +29,9 @@ export async function transcribeElevenLabs(
   form.append("file", new Blob([new Uint8Array(audio)], { type: "audio/wav" }), "audio.wav");
   form.append("timestamps_granularity", "word");
   form.append("tag_audio_events", "false");
+  if (config.language) {
+  form.append("language_code", config.language);
+}
   const raw = await requestJson(
     provider,
     joinUrl(config.baseUrl || ELEVENLABS_BASE_URL, "v1/speech-to-text"),

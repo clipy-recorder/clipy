@@ -24,6 +24,7 @@ export interface OpenAICompatibleConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  language?: string;
 }
 
 export async function transcribeOpenAICompatible(
@@ -38,6 +39,9 @@ export async function transcribeOpenAICompatible(
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(wav)], { type: "audio/wav" }), "audio.wav");
     form.append("model", config.model);
+    if (config.language) {
+  form.append("language", config.language);
+}
     form.append("response_format", "verbose_json");
     form.append("timestamp_granularities[]", "segment");
     const headers: Record<string, string> = {};

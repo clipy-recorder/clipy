@@ -36,9 +36,10 @@ async function expectSafeError(p: Promise<unknown>, provider: string, status: nu
   expect((err as ProviderError).status).toBe(status);
 }
 
+
 describe("openai-compatible", () => {
   it("posts verbose_json with segment timestamps and maps seconds to ms", async () => {
-    server = await fakeServer(async (req, res) => {
+    server = await fakeServer(async (_req, res) => {
       json(res, {
         text: "hello world. second",
         language: "english",
@@ -48,8 +49,14 @@ describe("openai-compatible", () => {
         ],
       });
     });
+
     const input = await audioInput(3);
-    const r = await transcribeOpenAICompatible(input, { baseUrl: `${server.url}/v1/`, apiKey: KEY, model: "whisper-1" });
+    const r = await transcribeOpenAICompatible(input, {
+      baseUrl: `${server.url}/v1/`,
+      apiKey: KEY,
+      model: "whisper-1",
+    });
+
     expect(r.segments).toEqual([
       { startMs: 500, endMs: 1250, text: "hello world." },
       { startMs: 1500, endMs: 2000, text: "second" },
@@ -62,30 +69,73 @@ describe("openai-compatible", () => {
     expect(req.method).toBe("POST");
     expect(req.url).toBe("/v1/audio/transcriptions");
     expect(req.headers.authorization).toBe(`Bearer ${KEY}`);
+
     const form = await formData(req);
     expect(form.get("model")).toBe("whisper-1");
     expect(form.get("response_format")).toBe("verbose_json");
     expect(form.getAll("timestamp_granularities[]")).toEqual(["segment"]);
+
     const file = form.get("file") as File;
     expect(file.name).toBe("audio.wav");
     expect(file.type).toBe("audio/wav");
     expect(file.size).toBe(44 + 3 * 32000);
   });
 
+  it("sends the selected transcription language", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, { text: "Namaste" }),
+    );
+
+    await transcribeOpenAICompatible(await audioInput(1), {
+      baseUrl: server.url,
+      apiKey: KEY,
+      model: "whisper-1",
+      language: "hi",
+    });
+
+    const form = await formData(server.requests[0]);
+    expect(form.get("language")).toBe("hi");
+  });
+
+  it("does not send a language when none is selected", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, { text: "Hello" }),
+    );
+
+    await transcribeOpenAICompatible(await audioInput(1), {
+      baseUrl: server.url,
+      apiKey: KEY,
+      model: "whisper-1",
+    });
+
+    const form = await formData(server.requests[0]);
+    expect(form.has("language")).toBe(false);
+  });
+
   it("splits audio over the upload limit at silences and offsets each piece", async () => {
     const seen: number[] = [];
-    server = await fakeServer(async (req, res) => {
-      const file = (await formData(req)).get("file") as File;
+
+    server = await fakeServer(async (_req, res) => {
+      const file = (await formData(_req)).get("file") as File;
       const dur = wavSeconds(Buffer.from(await file.arrayBuffer()));
       seen.push(dur);
-      json(res, { segments: [{ start: 0.5, end: 1.5, text: `piece ${seen.length}` }] });
+      json(res, {
+        segments: [{ start: 0.5, end: 1.5, text: `piece ${seen.length}` }],
+      });
     });
+
     // 25 s of audio, 10 s upload limit, silences at 7-8 and 16-17 s.
     const input = await audioInput(25, [
       { startSec: 7, endSec: 8 },
       { startSec: 16, endSec: 17 },
     ]);
-    const r = await transcribeOpenAICompatible(input, { baseUrl: server.url, apiKey: KEY, model: "m" }, { maxUploadBytes: 44 + 10 * 32000 });
+
+    const r = await transcribeOpenAICompatible(
+      input,
+      { baseUrl: server.url, apiKey: KEY, model: "m" },
+      { maxUploadBytes: 44 + 10 * 32000 },
+    );
+
     expect(seen).toHaveLength(3);
     expect(seen.every((s) => s <= 10)).toBe(true);
     expect(seen.map((s) => Math.round(s * 10) / 10)).toEqual([7.5, 9, 8.5]);
@@ -97,29 +147,87 @@ describe("openai-compatible", () => {
   });
 
   it("sends no Authorization header when the key is empty (local servers)", async () => {
-    server = await fakeServer((_req, res) => json(res, { text: "just text" }));
-    const r = await transcribeOpenAICompatible(await audioInput(2), { baseUrl: server.url, apiKey: "", model: "m" });
+    server = await fakeServer((_req, res) =>
+      json(res, { text: "just text" }),
+    );
+
+    const r = await transcribeOpenAICompatible(await audioInput(2), {
+      baseUrl: server.url,
+      apiKey: "",
+      model: "m",
+    });
+
     expect(server.requests[0].headers.authorization).toBeUndefined();
-    // No segments: one segment over the piece.
-    expect(r.segments).toEqual([{ startMs: 0, endMs: 2000, text: "just text" }]);
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 2000, text: "just text" },
+    ]);
   });
 
   it("reports HTTP errors without the key or the body", async () => {
-    server = await fakeServer((_req, res) => json(res, { error: { message: `bad key ${KEY} ${SECRET_TEXT}` } }, 401));
-    await expectSafeError(transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }), "openai-compatible", 401);
+    server = await fakeServer((_req, res) =>
+      json(res, { error: { message: `bad key ${KEY} ${SECRET_TEXT}` } }, 401),
+    );
+
+    await expectSafeError(
+      transcribeOpenAICompatible(await audioInput(1), {
+        baseUrl: server.url,
+        apiKey: KEY,
+        model: "m",
+      }),
+      "openai-compatible",
+      401,
+    );
   });
 
   it("works end to end through transcribe() from a media file", async () => {
-    server = await fakeServer((_req, res) => json(res, { language: "en", segments: [{ start: 0, end: 1, text: "ok" }] }));
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        language: "en",
+        segments: [{ start: 0, end: 1, text: "ok" }],
+      }),
+    );
+
     const dir = tempDir();
     const media = join(dir, "tone.m4a");
-    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=duration=2", "-c:a", "aac", media]);
+
+    execFileSync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=duration=2",
+      "-c:a",
+      "aac",
+      media,
+    ]);
+
     const stages = new Set<string>();
-    const r = await transcribe(media, { kind: "openai-compatible", baseUrl: server.url, apiKey: KEY, model: "whisper-large-v3-turbo" }, { onProgress: (p) => stages.add(p.stage) });
-    expect(r).toEqual({ segments: [{ startMs: 0, endMs: 1000, text: "ok" }], engine: "openai-compatible:whisper-large-v3-turbo", language: "en", gaps: [] });
+    const r = await transcribe(
+      media,
+      {
+        kind: "openai-compatible",
+        baseUrl: server.url,
+        apiKey: KEY,
+        model: "whisper-large-v3-turbo",
+      },
+      { onProgress: (p) => stages.add(p.stage) },
+    );
+
+    expect(r).toEqual({
+      segments: [{ startMs: 0, endMs: 1000, text: "ok" }],
+      engine: "openai-compatible:whisper-large-v3-turbo",
+      language: "en",
+      gaps: [],
+    });
     expect([...stages]).toEqual(["extract", "transcribe"]);
   });
 });
+
+
+
 
 describe("deepgram", () => {
   it("posts the raw WAV with a Token header and maps utterances", async () => {
@@ -152,6 +260,26 @@ describe("deepgram", () => {
     expect(req.body.length).toBe(44 + 3 * 32000);
   });
 
+  it("uses the selected transcription language", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [{ alternatives: [{ transcript: "Namaste" }] }],
+        },
+      }),
+    );
+
+    await transcribeDeepgram(await audioInput(1), {
+      apiKey: KEY,
+      baseUrl: server.url,
+      language: "hi",
+    });
+
+    const url = new URL(server.requests[0].url, "http://x");
+    expect(url.searchParams.get("language")).toBe("hi");
+    expect(url.searchParams.has("detect_language")).toBe(false);
+  });
+
   it("falls back to words when there are no utterances", async () => {
     server = await fakeServer((_req, res) =>
       json(res, {
@@ -182,15 +310,28 @@ describe("deepgram", () => {
   });
 });
 
+
+
 describe("assemblyai", () => {
   it("uploads, starts a job, polls, and groups words (ms) into segments", async () => {
     let polls = 0;
     server = await fakeServer((req, res) => {
-      if (req.url === "/v2/upload") return json(res, { upload_url: "https://cdn.example/upload/abc" });
-      if (req.url === "/v2/transcript" && req.method === "POST") return json(res, { id: "t1", status: "queued" });
+      if (req.url === "/v2/upload") {
+        return json(res, {
+          upload_url: "https://cdn.example/upload/abc",
+        });
+      }
+
+      if (req.url === "/v2/transcript" && req.method === "POST") {
+        return json(res, { id: "t1", status: "queued" });
+      }
+
       if (req.url === "/v2/transcript/t1") {
         polls++;
-        if (polls < 2) return json(res, { id: "t1", status: "processing" });
+        if (polls < 2) {
+          return json(res, { id: "t1", status: "processing" });
+        }
+
         return json(res, {
           id: "t1",
           status: "completed",
@@ -202,53 +343,152 @@ describe("assemblyai", () => {
           ],
         });
       }
+
       json(res, {}, 404);
     });
+
     const input = await audioInput(6);
-    const r = await transcribeAssemblyAI(input, { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 });
+    const r = await transcribeAssemblyAI(
+      input,
+      { apiKey: KEY, baseUrl: server.url },
+      { pollIntervalMs: 5 },
+    );
+
     expect(r.segments).toEqual([
       { startMs: 100, endMs: 3500, text: "One two." },
       { startMs: 5000, endMs: 5400, text: "Three" },
     ]);
     expect(r.language).toBe("en_us");
     expect(r.engine).toBe("assemblyai");
+
     const [upload, create] = server.requests;
     expect(upload.headers.authorization).toBe(KEY);
     expect(upload.headers["content-type"]).toBe("application/octet-stream");
     expect(upload.body.length).toBe(44 + 6 * 32000);
     expect(create.headers.authorization).toBe(KEY);
-    expect(JSON.parse(create.body.toString())).toEqual({ audio_url: "https://cdn.example/upload/abc", language_detection: true });
+
+    expect(JSON.parse(create.body.toString())).toEqual({
+      audio_url: "https://cdn.example/upload/abc",
+      language_detection: true,
+    });
+
     expect(polls).toBe(2);
+  });
+
+  it("uses the selected transcription language", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") {
+        return json(res, {
+          upload_url: "https://cdn.example/upload/abc",
+        });
+      }
+
+      if (req.url === "/v2/transcript" && req.method === "POST") {
+        return json(res, { id: "t1", status: "queued" });
+      }
+
+      if (req.url === "/v2/transcript/t1") {
+        return json(res, {
+          id: "t1",
+          status: "completed",
+          language_code: "hi",
+          words: [],
+        });
+      }
+
+      json(res, {}, 404);
+    });
+
+    await transcribeAssemblyAI(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url, language: "hi" },
+      { pollIntervalMs: 5 },
+    );
+
+    const createRequest = server.requests.find(
+      (req) => req.url === "/v2/transcript" && req.method === "POST",
+    );
+
+    const body = JSON.parse(createRequest!.body.toString());
+
+    expect(body.language_code).toBe("hi");
+    expect(body.language_detection).toBeUndefined();
   });
 
   it("passes the model as speech_models and prefers utterances", async () => {
     server = await fakeServer((req, res) => {
-      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
-      if (req.method === "POST") return json(res, { id: "t2", status: "completed", utterances: [{ text: "Hi.", start: 0, end: 900 }] });
+      if (req.url === "/v2/upload") {
+        return json(res, { upload_url: "u" });
+      }
+
+      if (req.method === "POST") {
+        return json(res, {
+          id: "t2",
+          status: "completed",
+          utterances: [{ text: "Hi.", start: 0, end: 900 }],
+        });
+      }
+
       json(res, {}, 404);
     });
-    const r = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url, model: "universal" }, { pollIntervalMs: 5 });
-    expect(JSON.parse(server.requests[1].body.toString()).speech_models).toEqual(["universal"]);
-    expect(r.segments).toEqual([{ startMs: 0, endMs: 900, text: "Hi." }]);
+
+    const r = await transcribeAssemblyAI(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url, model: "universal" },
+      { pollIntervalMs: 5 },
+    );
+
+    expect(
+      JSON.parse(server.requests[1].body.toString()).speech_models,
+    ).toEqual(["universal"]);
+
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 900, text: "Hi." },
+    ]);
     expect(r.engine).toBe("assemblyai:universal");
   });
 
   it("fails cleanly when the job errors, without the provider's message", async () => {
     server = await fakeServer((req, res) => {
-      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
-      return json(res, { id: "t3", status: "error", error: SECRET_TEXT });
+      if (req.url === "/v2/upload") {
+        return json(res, { upload_url: "u" });
+      }
+
+      return json(res, {
+        id: "t3",
+        status: "error",
+        error: SECRET_TEXT,
+      });
     });
-    const err = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 }).catch((e: Error) => e);
+
+    const err = await transcribeAssemblyAI(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url },
+      { pollIntervalMs: 5 },
+    ).catch((e: Error) => e);
+
     expect(err).toBeInstanceOf(ProviderError);
     expect((err as Error).message).toMatch(/assemblyai/);
     expect((err as Error).message).not.toContain(SECRET_TEXT);
   });
 
   it("reports HTTP errors safely", async () => {
-    server = await fakeServer((_req, res) => json(res, { error: SECRET_TEXT }, 401));
-    await expectSafeError(transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "assemblyai", 401);
+    server = await fakeServer((_req, res) =>
+      json(res, { error: SECRET_TEXT }, 401),
+    );
+
+    await expectSafeError(
+      transcribeAssemblyAI(
+        await audioInput(1),
+        { apiKey: KEY, baseUrl: server.url },
+      ),
+      "assemblyai",
+      401,
+    );
   });
 });
+
+
 
 describe("elevenlabs", () => {
   it("posts multipart with xi-api-key and groups words, skipping spacing", async () => {
@@ -265,64 +505,175 @@ describe("elevenlabs", () => {
         ],
       }),
     );
-    const r = await transcribeElevenLabs(await audioInput(6), { apiKey: KEY, baseUrl: server.url });
+
+    const r = await transcribeElevenLabs(
+      await audioInput(6),
+      { apiKey: KEY, baseUrl: server.url },
+    );
+
     expect(r.segments).toEqual([
       { startMs: 100, endMs: 3200, text: "Good morning." },
       { startMs: 5000, endMs: 5500, text: "Again" },
     ]);
     expect(r.language).toBe("eng");
     expect(r.engine).toBe("elevenlabs:scribe_v2");
+
     const [req] = server.requests;
     expect(req.url).toBe("/v1/speech-to-text");
     expect(req.headers["xi-api-key"]).toBe(KEY);
     expect(req.headers.authorization).toBeUndefined();
-    const form = await formData(req);
-    expect(form.get("model_id")).toBe("scribe_v2");
-    expect((form.get("file") as File).size).toBe(44 + 6 * 32000);
+
+   const form = await formData(req);
+
+expect(form.get("model_id")).toBe("scribe_v2");
+expect(form.has("language_code")).toBe(false);
+expect((form.get("file") as File).size).toBe(44 + 6 * 32000); });
+
+  it("uses the selected transcription language", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        language_code: "hin",
+        text: "Namaste",
+        words: [
+          { text: "Namaste", start: 0, end: 1, type: "word" },
+        ],
+      }),
+    );
+
+    await transcribeElevenLabs(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url, language: "hi" },
+    );
+
+    const form = await formData(server.requests[0]);
+
+    expect(form.get("language_code")).toBe("hi");
   });
 
   it("reports HTTP errors safely", async () => {
-    server = await fakeServer((_req, res) => json(res, { detail: SECRET_TEXT }, 422));
-    await expectSafeError(transcribeElevenLabs(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "elevenlabs", 422);
+    server = await fakeServer((_req, res) =>
+      json(res, { detail: SECRET_TEXT }, 422),
+    );
+
+    await expectSafeError(
+      transcribeElevenLabs(
+        await audioInput(1),
+        { apiKey: KEY, baseUrl: server.url },
+      ),
+      "elevenlabs",
+      422,
+    );
   });
 });
 
+
 describe("gemini", () => {
   function reply(obj: unknown) {
-    return { candidates: [{ content: { parts: [{ text: typeof obj === "string" ? obj : JSON.stringify(obj) }] } }] };
+    return {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: typeof obj === "string" ? obj : JSON.stringify(obj),
+              },
+            ],
+          },
+        },
+      ],
+    };
   }
 
   it("sends the audio inline with a JSON schema and validates the answer", async () => {
     server = await fakeServer((_req, res) =>
-      json(res, reply({ language: "de", segments: [{ start: 0.5, end: 2, text: "Guten Tag." }, { start: "00:03", end: "0:04.5", text: "Wie geht's?" }] })),
+      json(
+        res,
+        reply({
+          language: "de",
+          segments: [
+            { start: 0.5, end: 2, text: "Guten Tag." },
+            { start: "00:03", end: "0:04.5", text: "Wie geht's?" },
+          ],
+        }),
+      ),
     );
-    const r = await transcribeGemini(await audioInput(5), { apiKey: KEY, baseUrl: server.url });
+
+    const r = await transcribeGemini(
+      await audioInput(5),
+      { apiKey: KEY, baseUrl: server.url },
+    );
+
     expect(r.segments).toEqual([
       { startMs: 500, endMs: 2000, text: "Guten Tag." },
       { startMs: 3000, endMs: 4500, text: "Wie geht's?" },
     ]);
     expect(r.language).toBe("de");
     expect(r.engine).toBe("gemini:gemini-3.5-flash-lite");
+
     const [req] = server.requests;
     expect(req.url).toBe("/models/gemini-3.5-flash-lite:generateContent");
     expect(req.headers["x-goog-api-key"]).toBe(KEY);
     expect(req.url).not.toContain(KEY);
+
     const body = JSON.parse(req.body.toString());
     const audio = body.contents[0].parts[0].inline_data;
+
     expect(audio.mime_type).toBe("audio/wav");
     expect(Buffer.from(audio.data, "base64").length).toBe(44 + 5 * 32000);
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.generationConfig.responseSchema.required).toEqual(["segments"]);
   });
 
+  it("uses the selected transcription language in the prompt", async () => {
+    server = await fakeServer((_req, res) =>
+      json(
+        res,
+        reply({
+          language: "hi",
+          segments: [{ start: 0, end: 1, text: "नमस्ते" }],
+        }),
+      ),
+    );
+
+    await transcribeGemini(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url, language: "hi" },
+    );
+
+    const [req] = server.requests;
+    const body = JSON.parse(req.body.toString());
+    const prompt = body.contents[0].parts.find(
+      (part: { text?: string }) => typeof part.text === "string",
+    )?.text;
+
+    expect(prompt).toContain('selected language code "hi"');
+    expect(prompt).toContain("Transcribe the speech in this language");
+  });
+
   it("chunks long audio, offsets each piece and clamps times to the piece", async () => {
     let n = 0;
+
     server = await fakeServer((_req, res) => {
       n++;
-      json(res, reply("```json\n" + JSON.stringify({ segments: [{ start: 1, end: 99, text: `part ${n}` }] }) + "\n```"));
+      json(
+        res,
+        reply(
+          "```json\n" +
+            JSON.stringify({
+              segments: [{ start: 1, end: 99, text: `part ${n}` }],
+            }) +
+            "\n```",
+        ),
+      );
     });
+
     const input = await audioInput(20, [{ startSec: 9, endSec: 11 }]);
-    const r = await transcribeGemini(input, { apiKey: KEY, baseUrl: server.url, model: "gemini-x" }, { maxSec: 12, targetSec: 10 });
+    const r = await transcribeGemini(
+      input,
+      { apiKey: KEY, baseUrl: server.url, model: "gemini-x" },
+      { maxSec: 12, targetSec: 10 },
+    );
+
     expect(n).toBe(2);
     expect(r.segments).toEqual([
       { startMs: 1000, endMs: 10000, text: "part 1" },
@@ -331,18 +682,38 @@ describe("gemini", () => {
   });
 
   it("rejects an answer that is not the transcript format", async () => {
-    server = await fakeServer((_req, res) => json(res, reply({ words: [SECRET_TEXT] })));
-    const err = await transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }).catch((e: Error) => e);
+    server = await fakeServer((_req, res) =>
+      json(res, reply({ words: [SECRET_TEXT] })),
+    );
+
+    const err = await transcribeGemini(
+      await audioInput(1),
+      { apiKey: KEY, baseUrl: server.url },
+    ).catch((e: Error) => e);
+
     expect(err).toBeInstanceOf(ProviderError);
     expect((err as Error).message).toMatch(/gemini.*did not match/);
     expect((err as Error).message).not.toContain(SECRET_TEXT);
   });
 
   it("reports HTTP errors safely", async () => {
-    server = await fakeServer((_req, res) => json(res, { error: { message: SECRET_TEXT } }, 400));
-    await expectSafeError(transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "gemini", 400);
+    server = await fakeServer((_req, res) =>
+      json(res, { error: { message: SECRET_TEXT } }, 400),
+    );
+
+    await expectSafeError(
+      transcribeGemini(
+        await audioInput(1),
+        { apiKey: KEY, baseUrl: server.url },
+      ),
+      "gemini",
+      400,
+    );
   });
 });
+
+
+
 
 describe("network failures", () => {
   it("names the provider when it cannot be reached", async () => {

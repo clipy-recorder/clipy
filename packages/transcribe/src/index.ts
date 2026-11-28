@@ -81,8 +81,13 @@ function wholeFileGap(totalMs: number, reason: string): TranscriptGap[] {
 function runEngine(input: AudioInput, config: Exclude<TranscriptionConfig, { kind: "none" }>, options: TranscribeOptions): Promise<EngineOutput> {
   switch (config.kind) {
     case "local":
-      return transcribeLocal(input, config.model, options.modelDir, options.speechEngine);
-    case "openai-compatible":
+   return transcribeLocal(
+  input,
+  config.model,
+  options.modelDir,
+  options.speechEngine,
+  config.language,
+); case "openai-compatible":
       return transcribeOpenAICompatible(input, config);
     case "deepgram":
       return transcribeDeepgram(input, config);

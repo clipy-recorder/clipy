@@ -17,6 +17,12 @@ const PROMPT =
   "Times are seconds from the start of this audio. Make one segment per sentence or per pause, at most 15 seconds each, in order. " +
   'If there is no speech, answer {"segments": []}.';
 
+function getPrompt(language?: string): string {
+  if (!language) return PROMPT;
+
+  return `${PROMPT} The user has selected language code "${language}". Transcribe the speech in this language.`;
+}
+
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -63,8 +69,7 @@ function parseReply(text: string): unknown {
 
 export async function transcribeGemini(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
-  limits: { maxSec?: number; targetSec?: number } = {},
+config: { apiKey: string; model?: string; baseUrl?: string; language?: string },  limits: { maxSec?: number; targetSec?: number } = {},
 ): Promise<EngineOutput> {
   const provider = "gemini";
   const model = config.model || GEMINI_DEFAULT_MODEL;
@@ -77,7 +82,7 @@ export async function transcribeGemini(
       contents: [
         {
           role: "user",
-          parts: [{ inline_data: { mime_type: "audio/wav", data: wav.toString("base64") } }, { text: PROMPT }],
+          parts: [{ inline_data: { mime_type: "audio/wav", data: wav.toString("base64") } }, { text: getPrompt(config.language) }],
         },
       ],
       generationConfig: { temperature: 0, responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA },

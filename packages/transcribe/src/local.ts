@@ -63,15 +63,19 @@ export class ModelNotInstalledError extends Error {
   }
 }
 
-function recognizerConfig(model: LocalModelId, dir: string, threads: number): unknown {
-  const p = modelFilePaths(model, dir);
+export function recognizerConfig(
+  model: LocalModelId,
+  dir: string,
+  threads: number,
+  language?: string,
+): unknown {  const p = modelFilePaths(model, dir);
   const common = { tokens: p["tokens.txt"], numThreads: threads, provider: "cpu", debug: 0 };
   return {
     featConfig: { sampleRate: 16000, featureDim: 80 },
     modelConfig:
       model === "english-fast"
         ? { ...common, nemoCtc: { model: p["model.int8.onnx"] } }
-        : { ...common, whisper: { encoder: p["encoder.int8.onnx"], decoder: p["decoder.int8.onnx"], language: "", task: "transcribe" } },
+        : { ...common, whisper: { encoder: p["encoder.int8.onnx"], decoder: p["decoder.int8.onnx"], language: language ?? "", task: "transcribe" } },
   };
 }
 
@@ -174,6 +178,7 @@ export async function transcribeLocal(
   model: LocalModelId,
   modelDir?: string,
   speechEngine?: string,
+  language?: string,
 ): Promise<EngineOutput> {
   const status = modelStatus(model, modelDir);
   if (!status.installed) throw new ModelNotInstalledError(model);
@@ -199,7 +204,7 @@ export async function transcribeLocal(
 
   const threads = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
   const job: Job = {
-    config: recognizerConfig(model, status.dir, threads),
+    config: recognizerConfig(model, status.dir, threads, language),
     engine,
     wav: { path: input.wavPath, dataOffset: input.info.dataOffset, dataBytes: input.info.dataBytes, sampleRate: input.info.sampleRate },
   };
@@ -260,7 +265,11 @@ export async function transcribeLocal(
   gaps.sort((a, b) => a.startMs - b.startMs);
   input.onProgress?.(1);
 
-  let language: string | undefined = model === "english-fast" ? "en" : undefined;
-  if (model === "multilingual" && langs.size > 0) language = [...langs.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  return { segments, engine: `local:${model}`, language, gaps };
+let detectedLanguage: string | undefined =
+  model === "english-fast" ? "en" : undefined;
+
+if (model === "multilingual" && langs.size > 0) {
+  detectedLanguage = [...langs.entries()].sort((a, b) => b[1] - a[1])[0][0];
 }
+
+return { segments, engine: `local:${model}`, language: detectedLanguage, gaps };}

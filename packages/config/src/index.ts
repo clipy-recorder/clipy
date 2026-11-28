@@ -8,6 +8,7 @@
  *
  * | Env var | Overrides |
  * |---|---|
+ * | `CLIPY_TRANSCRIBE_LANGUAGE` | `transcription.language` |
  * | `CLIPY_MODEL_PROVIDER` | `model.preset` (openrouter, openai, gemini, groq, ollama, lmstudio, custom) |
  * | `CLIPY_MODEL_BASE_URL` | `model.baseUrl` |
  * | `CLIPY_MODEL_API_KEY` | `model.apiKey` |
@@ -66,12 +67,10 @@ export type { ModelProvider } from "@clipy/moments";
 
 /** How recordings are transcribed, resolved and ready to use. */
 export type TranscriptionConfig =
-  | { kind: "none" }
-  | { kind: "local"; model: LocalTranscriptionModel }
-  /** OpenAI, Groq or another OpenAI-compatible `/audio/transcriptions` endpoint. apiKey is "" when the server needs none. */
-  | { kind: "openai-compatible"; baseUrl: string; apiKey: string; model: string }
-  | { kind: (typeof KEYED_TRANSCRIPTION_KINDS)[number]; apiKey: string; model?: string };
-
+  | { kind: "none"; language?: string }
+  | { kind: "local"; model: LocalTranscriptionModel; language?: string }
+  | { kind: "openai-compatible"; baseUrl: string; apiKey: string; model: string; language?: string }
+  | { kind: (typeof KEYED_TRANSCRIPTION_KINDS)[number]; apiKey: string; model?: string; language?: string };
 export interface LocalConfig {
   /** null: rules only, nothing leaves the machine. */
   model: ModelProvider | null;
@@ -177,12 +176,25 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
   const envKey = envValue(env, "CLIPY_TRANSCRIBE_API_KEY");
   const envModel = envValue(env, "CLIPY_TRANSCRIBE_MODEL");
   const envBase = envValue(env, "CLIPY_TRANSCRIBE_BASE_URL");
-
-  type Draft = { kind: StoredTranscriptionKind; apiKey?: string; model?: string; baseUrl?: string };
-  let draft: Draft = { ...(stored ?? DEFAULT_TRANSCRIPTION) };
+const envLanguage = envValue(env, "CLIPY_TRANSCRIBE_LANGUAGE");
+if (envLanguage && !/^[a-z]{2}$/.test(envLanguage)) {
+  throw new ConfigError(
+    "CLIPY_TRANSCRIBE_LANGUAGE must be a two-letter ISO 639-1 language code.",
+  );
+}
+ type Draft = {
+  kind: StoredTranscriptionKind;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+  language?: string;
+};
+ let draft: Draft = { ...(stored ?? DEFAULT_TRANSCRIPTION) };
   if (envKind) {
     const kind = oneOf(TRANSCRIPTION_KINDS, envKind, "CLIPY_TRANSCRIBE");
-    if (kind !== draft.kind) draft = { kind };
+    if (kind !== draft.kind) {
+  draft = { kind, language: draft.language };
+}
   }
   if (envBase) {
     if (envKind && !["openai", "groq", "openai-compatible"].includes(envKind)) {
@@ -196,6 +208,7 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
   }
   if (envKey) draft.apiKey = envKey;
   if (envModel) draft.model = envModel;
+  if (envLanguage) draft.language = envLanguage;
 
   const needKey = (who: string) =>
     new ConfigError(
@@ -204,7 +217,7 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
 
   switch (draft.kind) {
     case "none":
-      return { kind: "none" };
+  return { kind: "none", ...(draft.language ? { language: draft.language } : {}) };
     case "local": {
       const model = draft.model ?? "english-fast";
       if (!(LOCAL_TRANSCRIPTION_MODELS as readonly string[]).includes(model)) {
@@ -212,14 +225,23 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
           `The local transcription model must be one of ${LOCAL_TRANSCRIPTION_MODELS.join(", ")} (CLIPY_TRANSCRIBE_MODEL or "transcription.model", config file: ${path}).`,
         );
       }
-      return { kind: "local", model: model as LocalTranscriptionModel };
+      return {
+  kind: "local",
+  model: model as LocalTranscriptionModel,
+  ...(draft.language ? { language: draft.language } : {}),
+};
     }
     case "openai":
     case "groq": {
       if (!draft.apiKey) throw needKey(draft.kind === "openai" ? "OpenAI" : "Groq");
       const preset = TRANSCRIPTION_PRESETS[draft.kind];
-      return { kind: "openai-compatible", baseUrl: preset.baseUrl, apiKey: draft.apiKey, model: draft.model ?? preset.model };
-    }
+     return {
+  kind: "openai-compatible",
+  baseUrl: preset.baseUrl,
+  apiKey: draft.apiKey,
+  model: draft.model ?? preset.model,
+  ...(draft.language ? { language: draft.language } : {}),
+};    }
     case "openai-compatible": {
       if (!draft.baseUrl) {
         throw new ConfigError(
@@ -231,14 +253,23 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
           `OpenAI-compatible transcription needs a model name. Set CLIPY_TRANSCRIBE_MODEL or "transcription.model" (config file: ${path}).`,
         );
       }
-      return { kind: "openai-compatible", baseUrl: draft.baseUrl, apiKey: draft.apiKey ?? "", model: draft.model };
-    }
+     return {
+  kind: "openai-compatible",
+  baseUrl: draft.baseUrl,
+  apiKey: draft.apiKey ?? "",
+  model: draft.model,
+  ...(draft.language ? { language: draft.language } : {}),
+}; }
     default: {
-      if (!draft.apiKey) throw needKey(draft.kind);
-      return draft.model
-        ? { kind: draft.kind, apiKey: draft.apiKey, model: draft.model }
-        : { kind: draft.kind, apiKey: draft.apiKey };
-    }
+  if (!draft.apiKey) throw needKey(draft.kind);
+
+  return {
+    kind: draft.kind,
+    apiKey: draft.apiKey,
+    ...(draft.model ? { model: draft.model } : {}),
+    ...(draft.language ? { language: draft.language } : {}),
+  };
+}
   }
 }
 
