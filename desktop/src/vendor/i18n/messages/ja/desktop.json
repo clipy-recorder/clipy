@@ -758,6 +758,7 @@
     "dontOpen": "自動で開かない",
     "keyMoments": "キーモーメント",
     "transcript": "文字起こし",
+    "copyTranscript": "文字起こしをコピー",
     "noSpeech": "音声は認識されませんでした。",
     "transcribing": "文字起こし中…"
   },

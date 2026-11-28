@@ -790,6 +790,7 @@
     "dontOpen": "Don't open automatically",
     "keyMoments": "Key moments",
     "transcript": "Transcript",
+    "copyTranscript": "Copy transcript",
     "noSpeech": "No speech recognized.",
     "transcribing": "Transcribing…"
   },

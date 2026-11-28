@@ -41,6 +41,7 @@ export default function Viewer() {
   const [error, setError] = useState<string | null>(null);
   const [position, setPosition] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [transcriptCopied, setTranscriptCopied] = useState(false);
   const [autoOpen, setAutoOpen] = useState<"on" | "turningOff" | "off" | "dismissed">("on");
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // Apple's on-device recognizer hands back one segment per word, so the raw
@@ -80,6 +81,14 @@ export default function Viewer() {
     await writeText(recording.arecPath);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  // One line per transcript line, with its timestamp, as shown in the list.
+  const copyTranscript = async () => {
+    if (lines.length === 0) return;
+    await writeText(lines.map((line) => `[${clock(line.startMs)}] ${line.text}`).join("\n"));
+    setTranscriptCopied(true);
+    window.setTimeout(() => setTranscriptCopied(false), 1500);
   };
 
   const stopOpening = async () => {
@@ -202,7 +211,18 @@ export default function Viewer() {
           )}
 
           <div className="px-5 py-4">
-            <h2 className="pb-3 text-[13px] font-bold uppercase tracking-wide text-ink-secondary">{t("transcript")}</h2>
+            <div className="flex items-center justify-between pb-3">
+              <h2 className="text-[13px] font-bold uppercase tracking-wide text-ink-secondary">{t("transcript")}</h2>
+              {lines.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void copyTranscript().catch(() => {})}
+                  className="rounded-full bg-row px-3 py-1 text-[12px] font-semibold hover:bg-row-hover"
+                >
+                  {transcriptCopied ? t("copied") : t("copyTranscript")}
+                </button>
+              )}
+            </div>
             {lines.length === 0 ? (
               <p className="text-[13px] text-ink-secondary">{recording.stage === "ready" ? t("noSpeech") : t("transcribing")}</p>
             ) : (
