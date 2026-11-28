@@ -5,10 +5,10 @@
  * model is staged in a temporary folder that is renamed into place only once
  * every file has verified, so a model folder is either complete or absent.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, type Hash } from "node:crypto";
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
-import { mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { mkdir, open, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -199,6 +199,76 @@ export async function downloadVerified(
   maxBytes?: number,
   idleMs: number = DOWNLOAD_IDLE_TIMEOUT_MS,
 ): Promise<void> {
+  await transfer(url, dest, sha256, label, signal, onBytes, maxBytes, idleMs, false);
+}
+
+/**
+ * Like `downloadVerified`, but `dest` may already hold the start of the file
+ * from an earlier attempt. The rest is asked for with a `Range` request and
+ * appended when the server answers 206 with a matching `Content-Range`; on a
+ * 200 (the server ignored the range) or a 416 the file starts over from byte
+ * 0. The checksum and `maxBytes` always cover the whole file, including the
+ * bytes already on disk, and `onBytes` is told about those bytes too.
+ */
+export async function downloadResumable(
+  url: string,
+  dest: string,
+  sha256: string,
+  label: string,
+  signal?: AbortSignal,
+  onBytes?: (n: number) => void,
+  maxBytes?: number,
+  idleMs: number = DOWNLOAD_IDLE_TIMEOUT_MS,
+): Promise<void> {
+  await transfer(url, dest, sha256, label, signal, onBytes, maxBytes, idleMs, true);
+}
+
+async function sizeOf(path: string): Promise<number> {
+  try {
+    return (await stat(path)).size;
+  } catch {
+    return 0;
+  }
+}
+
+/** Feed a file on disk into `hash`, in chunks. */
+async function hashFile(path: string, hash: Hash): Promise<void> {
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer);
+}
+
+async function fileMatches(path: string, sha256: string): Promise<boolean> {
+  const hash = createHash("sha256");
+  await hashFile(path, hash);
+  return hash.digest("hex") === sha256.toLowerCase();
+}
+
+/** The first byte a 206 response covers, from `Content-Range: bytes <start>-<end>/<total>`. */
+function rangeStart(res: Response): number | null {
+  const m = /^bytes (\d+)-\d+\/(?:\d+|\*)$/.exec(res.headers.get("content-range")?.trim() ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+async function transfer(
+  url: string,
+  dest: string,
+  sha256: string,
+  label: string,
+  signal: AbortSignal | undefined,
+  onBytes: ((n: number) => void) | undefined,
+  maxBytes: number | undefined,
+  idleMs: number,
+  resume: boolean,
+): Promise<void> {
+  let offset = resume ? await sizeOf(dest) : 0;
+  // A file that already reached its full size (the process stopped before
+  // renaming it) needs no request at all if it verifies.
+  if (offset > 0 && maxBytes !== undefined && offset >= maxBytes) {
+    if (offset === maxBytes && (await fileMatches(dest, sha256))) {
+      onBytes?.(offset);
+      return;
+    }
+    offset = 0;
+  }
   // Abandon a connection that stops sending: the clock restarts on every chunk.
   const idle = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -208,19 +278,32 @@ export async function downloadVerified(
   };
   const stalled = () => new Error(`Could not download ${label}: the connection stalled (nothing received for ${Math.round(idleMs / 1000)} s)`);
   const combined = signal ? AbortSignal.any([signal, idle.signal]) : idle.signal;
-  bump();
-  try {
-    let res: Response;
+  const request = async (from: number): Promise<Response> => {
+    bump();
     try {
-      res = await fetch(url, { signal: combined, redirect: "follow" });
+      const headers: Record<string, string> = from > 0 ? { range: `bytes=${from}-` } : {};
+      return await fetch(url, { signal: combined, redirect: "follow", headers });
     } catch (err) {
       if (signal?.aborted) throw cancelled();
       if (idle.signal.aborted) throw stalled();
       const code = (err as { cause?: { code?: string } }).cause?.code;
       throw new Error(`Could not download ${label}: ${code ? `network error (${code})` : "the server could not be reached"}`);
     }
+  };
+  try {
+    let res = await request(offset);
+    if (offset > 0 && !(res.status === 206 && rangeStart(res) === offset)) {
+      if (res.status === 206 || res.status === 416) {
+        // A range we did not ask for, or one past the end of the file: start over.
+        await res.body?.cancel().catch(() => undefined);
+        res = await request(0);
+      }
+      // A 200 is the whole file. An error is reported by saveVerified before it
+      // opens `dest`, so the bytes already there are kept for the next attempt.
+      offset = 0;
+    }
     bump();
-    await saveVerified(res, dest, sha256, label, signal, onBytes, maxBytes, bump, () => idle.signal.aborted, stalled);
+    await saveVerified(res, dest, sha256, label, signal, onBytes, maxBytes, bump, () => idle.signal.aborted, stalled, offset);
   } finally {
     clearTimeout(timer);
   }
@@ -237,19 +320,25 @@ async function saveVerified(
   bump: () => void,
   isStalled: () => boolean,
   stalled: () => Error,
+  /** Bytes of the file already in `dest`; the response carries the rest. */
+  offset = 0,
 ): Promise<void> {
   if (!res.ok || !res.body) {
     await res.body?.cancel().catch(() => undefined);
     throw new Error(`Could not download ${label} (HTTP ${res.status})`);
   }
   const declared = Number(res.headers.get("content-length"));
-  if (maxBytes !== undefined && Number.isFinite(declared) && declared > maxBytes) {
+  if (maxBytes !== undefined && Number.isFinite(declared) && offset + declared > maxBytes) {
     await res.body.cancel().catch(() => undefined);
     throw new DownloadTooLargeError(label, maxBytes);
   }
   const hash = createHash("sha256");
-  const fh = await open(dest, "w");
-  let received = 0;
+  if (offset > 0) {
+    await hashFile(dest, hash);
+    onBytes?.(offset);
+  }
+  const fh = await open(dest, offset > 0 ? "a" : "w");
+  let received = offset;
   try {
     const reader = res.body.getReader();
     for (;;) {
@@ -276,25 +365,53 @@ async function saveVerified(
   if (hash.digest("hex") !== sha256.toLowerCase()) throw new ChecksumError(label);
 }
 
+/** Staging folders a `downloadModel` call in this process is using right now. */
+const activeStages = new Set<string>();
+
+async function folderBytes(dir: string): Promise<number> {
+  let total = 0;
+  for (const name of await readdir(dir).catch(() => [] as string[])) total += await sizeOf(join(dir, name));
+  return total;
+}
+
 /**
- * Remove staging folders left by a download whose process died before it
- * could clean up (killed, power loss). A folder whose process is still alive
- * belongs to a download in progress and is left alone.
+ * Pick the staging folder for a download of `model`. A folder this model's
+ * earlier attempt left behind (in a process that has died, or in this one
+ * after a failed call) is taken over by renaming it, so its finished files
+ * and partial file are reused; when there are several, the fullest wins and
+ * the rest are removed. Folders of other models whose process died before it
+ * could clean up (killed, power loss) are removed as before. A folder whose
+ * process is still running belongs to a download in progress and is left
+ * alone.
  */
-async function removeAbandonedStages(root: string): Promise<void> {
-  let names: string[];
-  try {
-    names = await readdir(root);
-  } catch {
-    return;
-  }
-  for (const name of names) {
-    const m = /^\..+\.partial-(\d+)-[0-9a-f]+$/.exec(name);
+async function claimStage(root: string, model: LocalModelId): Promise<string> {
+  const stage = join(root, `.${model}.partial-${process.pid}-${randomBytes(4).toString("hex")}`);
+  const ours: string[] = [];
+  for (const name of await readdir(root).catch(() => [] as string[])) {
+    const m = /^\.(.+)\.partial-(\d+)-[0-9a-f]+$/.exec(name);
     if (!m) continue;
-    const pid = Number(m[1]);
-    if (pid === process.pid || processAlive(pid)) continue;
-    await rm(join(root, name), { recursive: true, force: true }).catch(() => undefined);
+    const path = join(root, name);
+    const pid = Number(m[2]);
+    if (activeStages.has(path)) continue;
+    const mine = pid === process.pid;
+    if (!mine && processAlive(pid)) continue;
+    if (m[1] === model) ours.push(path);
+    else if (!mine) await rm(path, { recursive: true, force: true }).catch(() => undefined);
   }
+  const sizes = await Promise.all(ours.map(folderBytes));
+  const best = ours[sizes.indexOf(Math.max(...sizes))];
+  for (const path of ours) if (path !== best) await rm(path, { recursive: true, force: true }).catch(() => undefined);
+  if (best !== undefined) {
+    try {
+      // Renaming claims it: another process taking over the same folder loses the race.
+      await rename(best, stage);
+      return stage;
+    } catch {
+      // Taken by someone else; start a fresh one.
+    }
+  }
+  await mkdir(stage, { recursive: true });
+  return stage;
 }
 
 function processAlive(pid: number): boolean {
@@ -363,9 +480,25 @@ export async function extractArchiveMembers(
   if (missing.length) throw new Error(`The ${label} archive is missing ${missing.map((m) => m.path).join(", ")}`);
 }
 
+/** True when an earlier attempt already unpacked every member of an archive, each with the right checksum. */
+async function membersUnpacked(stage: string, members: Array<{ path: string; sha256: string }>): Promise<boolean> {
+  for (const m of members) {
+    const path = join(stage, m.path);
+    if (!existsSync(path) || !(await fileMatches(path, m.sha256))) return false;
+  }
+  return true;
+}
+
 /**
  * Download, verify and install a model. Returns its folder. Safe to call
  * again: an installed model is returned as is.
+ *
+ * An interrupted download picks up where it stopped on the next call, in
+ * this process or a later one: files that finished and verified are kept,
+ * and the one that was cut off resumes with a `Range` request (see
+ * `downloadResumable`). The staging folder is removed instead when the
+ * download is cancelled, fails its checksum or is larger than expected, so
+ * bad bytes are never resumed.
  */
 export async function downloadModel(
   model: LocalModelId,
@@ -380,9 +513,8 @@ export async function downloadModel(
     return status.dir;
   }
   await mkdir(root, { recursive: true });
-  await removeAbandonedStages(root);
-  const stage = join(root, `.${model}.partial-${process.pid}-${randomBytes(4).toString("hex")}`);
-  await mkdir(stage, { recursive: true });
+  const stage = await claimStage(root, model);
+  activeStages.add(stage);
   const hasArchive = spec.files.some((f) => f.archive);
   const total = spec.files.reduce((n, f) => n + (f.bytes ?? 0), 0) || spec.sizeBytes;
   const downloadShare = hasArchive ? 0.85 : 1;
@@ -393,13 +525,29 @@ export async function downloadModel(
   };
   try {
     options.onProgress?.(0);
+    if (options.signal?.aborted) throw cancelled();
     for (const f of spec.files) {
       const dest = join(stage, f.path);
-      await downloadVerified(f.url, dest, f.sha256, spec.label, options.signal, report, f.bytes);
-      if (f.archive) {
+      // A file only gets its final name once it has verified; check it again
+      // anyway, since the folder may come from an earlier version of this code.
+      if (existsSync(dest) && !(await fileMatches(dest, f.sha256))) await rm(dest, { force: true });
+      if (existsSync(dest) || (f.archive && (await membersUnpacked(stage, f.archive.members)))) {
+        report(f.bytes ?? (await sizeOf(dest)));
+      } else {
+        // Named after the checksum, so bytes of a different version are never resumed.
+        const part = `${dest}.${f.sha256.slice(0, 16)}.part`;
+        await downloadResumable(f.url, part, f.sha256, spec.label, options.signal, report, f.bytes);
+        await rename(part, dest);
+      }
+      if (f.archive && existsSync(dest)) {
         await extractArchiveMembers(dest, f.archive.members, stage, spec.label, options.signal);
         await rm(dest, { force: true });
       }
+    }
+    // A reused folder can hold leftovers of an older attempt (a partial file
+    // of another version, an unfinished unpack); they do not belong in the model.
+    for (const name of await readdir(stage)) {
+      if (name.endsWith(".part") || name.endsWith(".tmp")) await rm(join(stage, name), { force: true });
     }
     await writeFile(join(stage, MARKER), JSON.stringify({ model, version: MODEL_VERSIONS[model], installedAt: new Date().toISOString() }, null, 2));
     const final = status.dir;
@@ -408,8 +556,14 @@ export async function downloadModel(
     options.onProgress?.(1);
     return final;
   } catch (err) {
-    await rm(stage, { recursive: true, force: true }).catch(() => undefined);
-    if (options.signal?.aborted) throw cancelled();
+    const aborted = options.signal?.aborted === true;
+    // Keep what was downloaded only when the next attempt can build on it.
+    if (aborted || err instanceof ChecksumError || err instanceof DownloadTooLargeError) {
+      await rm(stage, { recursive: true, force: true }).catch(() => undefined);
+    }
+    if (aborted) throw cancelled();
     throw err;
+  } finally {
+    activeStages.delete(stage);
   }
 }

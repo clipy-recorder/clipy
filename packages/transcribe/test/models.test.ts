@@ -8,6 +8,7 @@ import {
   ChecksumError,
   defaultModelDir,
   downloadModel,
+  downloadResumable,
   downloadVerified,
   DownloadTooLargeError,
   LOCAL_MODELS,
@@ -267,6 +268,191 @@ describe("downloadModel", () => {
     const root = tempDir();
     await expect(downloadModel("multilingual", { modelDir: root, signal: ac.signal })).rejects.toMatchObject({ name: "AbortError" });
     expect(readdirSync(root)).toEqual([]);
+  });
+});
+
+describe("resuming an interrupted download", () => {
+  const body = Buffer.from(Array.from({ length: 200_000 }, (_, i) => i % 251));
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  /** Serves `body`, honouring `Range` unless told not to; with `drop`, the first request is cut off halfway. */
+  function rangeServer(opts: { drop?: boolean; ignoreRange?: boolean } = {}) {
+    let calls = 0;
+    return fakeServer(async (req, res) => {
+      calls++;
+      if (opts.drop && calls === 1) {
+        res.setHeader("content-length", body.length);
+        res.write(body.subarray(0, body.length / 2));
+        await sleep(50);
+        res.destroy();
+        return;
+      }
+      const range = /^bytes=(\d+)-$/.exec(String(req.headers.range ?? ""));
+      if (range && !opts.ignoreRange) {
+        const from = Number(range[1]);
+        if (from >= body.length) {
+          res.statusCode = 416;
+          return res.end();
+        }
+        res.statusCode = 206;
+        res.setHeader("content-range", `bytes ${from}-${body.length - 1}/${body.length}`);
+        res.setHeader("content-length", body.length - from);
+        return res.end(body.subarray(from));
+      }
+      res.setHeader("content-length", body.length);
+      res.end(body);
+    });
+  }
+
+  function oneFileModel(url: string) {
+    LOCAL_MODELS.multilingual = {
+      label: "Test multilingual",
+      sizeBytes: body.length,
+      files: [{ url: `${url}/decoder`, sha256: sha(body), path: "decoder.int8.onnx", bytes: body.length }],
+    };
+  }
+
+  const partName = `decoder.int8.onnx.${sha(body).slice(0, 16)}.part`;
+
+  it("keeps the partial file when the connection drops, and asks only for the rest next time", async () => {
+    const srv = await rangeServer({ drop: true });
+    try {
+      oneFileModel(srv.url);
+      const root = tempDir();
+      await expect(downloadModel("multilingual", { modelDir: root })).rejects.toThrow(/connection dropped/);
+      const [stage] = readdirSync(root);
+      expect(stage).toMatch(/^\.multilingual\.partial-/);
+      const have = readFileSync(join(root, stage, partName)).length;
+      expect(have).toBeGreaterThan(0);
+      expect(have).toBeLessThan(body.length);
+
+      const progress: number[] = [];
+      const dir = await downloadModel("multilingual", { modelDir: root, onProgress: (f) => progress.push(f) });
+      expect(srv.requests).toHaveLength(2);
+      expect(srv.requests[0].headers.range).toBeUndefined();
+      expect(srv.requests[1].headers.range).toBe(`bytes=${have}-`);
+      expect(readFileSync(join(dir, "decoder.int8.onnx"))).toEqual(body);
+      expect(modelStatus("multilingual", root).installed).toBe(true);
+      expect(readdirSync(root)).toEqual(["multilingual"]);
+      // Progress counts the bytes kept from the first attempt and never goes backwards.
+      expect(progress[1]).toBeCloseTo(have / body.length, 5);
+      expect(progress.every((p, i) => i === 0 || p >= progress[i - 1])).toBe(true);
+      expect(progress[progress.length - 1]).toBe(1);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("starts the file over when the server ignores Range and sends it whole", async () => {
+    const srv = await rangeServer({ drop: true, ignoreRange: true });
+    try {
+      oneFileModel(srv.url);
+      const root = tempDir();
+      await expect(downloadModel("multilingual", { modelDir: root })).rejects.toThrow(/connection dropped/);
+      const dir = await downloadModel("multilingual", { modelDir: root });
+      expect(srv.requests[1].headers.range).toMatch(/^bytes=\d+-$/);
+      expect(readFileSync(join(dir, "decoder.int8.onnx"))).toEqual(body);
+      expect(readdirSync(root)).toEqual(["multilingual"]);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("resumes a partial file left by a process that died", async () => {
+    const srv = await rangeServer();
+    try {
+      oneFileModel(srv.url);
+      const root = tempDir();
+      const dead = join(root, ".multilingual.partial-4194305-abcd1234");
+      mkdirSync(dead);
+      writeFileSync(join(dead, partName), body.subarray(0, 500));
+      // Leftover of an older model version: never resumed, and not installed.
+      writeFileSync(join(dead, "decoder.int8.onnx.0123456789abcdef.part"), "old version");
+      const dir = await downloadModel("multilingual", { modelDir: root });
+      expect(srv.requests.map((r) => r.headers.range)).toEqual(["bytes=500-"]);
+      expect(readFileSync(join(dir, "decoder.int8.onnx"))).toEqual(body);
+      expect(readdirSync(dir).sort()).toEqual([".installed.json", "decoder.int8.onnx"]);
+      expect(readdirSync(root)).toEqual(["multilingual"]);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("throws away resumed bytes that fail the checksum, so they are not resumed again", async () => {
+    const srv = await rangeServer();
+    try {
+      oneFileModel(srv.url);
+      const root = tempDir();
+      const dead = join(root, ".multilingual.partial-4194305-abcd1234");
+      mkdirSync(dead);
+      writeFileSync(join(dead, partName), Buffer.alloc(500, 7));
+      await expect(downloadModel("multilingual", { modelDir: root })).rejects.toBeInstanceOf(ChecksumError);
+      expect(readdirSync(root)).toEqual([]);
+      // The next attempt starts clean and succeeds.
+      await downloadModel("multilingual", { modelDir: root });
+      expect(srv.requests.map((r) => r.headers.range)).toEqual(["bytes=500-", undefined]);
+      expect(modelStatus("multilingual", root).installed).toBe(true);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("does not download a file again that finished before another one failed", async () => {
+    const parts = { "encoder.int8.onnx": "enc-bytes", "tokens.txt": "tok" };
+    LOCAL_MODELS.multilingual = {
+      label: "Test multilingual",
+      sizeBytes: 0,
+      files: Object.entries(parts).map(([path, content]) => ({ url: `${server.url}/${path}`, sha256: sha(content), path, bytes: content.length })),
+    };
+    files.set("/encoder.int8.onnx", Buffer.from("enc-bytes"));
+    const root = tempDir();
+    await expect(downloadModel("multilingual", { modelDir: root })).rejects.toThrow("Could not download Test multilingual (HTTP 404)");
+    files.set("/tokens.txt", Buffer.from("tok"));
+    await downloadModel("multilingual", { modelDir: root });
+    expect(server.requests.map((r) => r.url)).toEqual(["/encoder.int8.onnx", "/tokens.txt", "/tokens.txt"]);
+    expect(readFileSync(join(root, "multilingual", "encoder.int8.onnx"), "utf8")).toBe("enc-bytes");
+  });
+
+  it("downloadResumable sends no request for a file already complete on disk", async () => {
+    const srv = await rangeServer();
+    try {
+      const dest = join(tempDir(), "f.part");
+      writeFileSync(dest, body);
+      let reported = 0;
+      await downloadResumable(`${srv.url}/f`, dest, sha(body), "Test model", undefined, (n) => (reported += n), body.length);
+      expect(srv.requests).toHaveLength(0);
+      expect(reported).toBe(body.length);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it("downloadResumable starts over on 416 or on a 206 for the wrong range", async () => {
+    const full = await rangeServer();
+    // Answers every request with the whole file as a 206 from byte 0.
+    const wrongRange = await fakeServer((_req, res) => {
+      res.statusCode = 206;
+      res.setHeader("content-range", `bytes 0-${body.length - 1}/${body.length}`);
+      res.setHeader("content-length", body.length);
+      res.end(body);
+    });
+    try {
+      // Longer than the file and no size cap given: the server answers 416, then the file comes whole.
+      const a = join(tempDir(), "a.part");
+      writeFileSync(a, Buffer.concat([body, Buffer.alloc(10)]));
+      await downloadResumable(`${full.url}/a`, a, sha(body), "Test model");
+      expect(full.requests.map((r) => r.headers.range)).toEqual([`bytes=${body.length + 10}-`, undefined]);
+      expect(readFileSync(a)).toEqual(body);
+
+      // A 206 that does not start at byte 1000 is not appended: the file is asked for again without Range.
+      const b = join(tempDir(), "b.part");
+      writeFileSync(b, body.subarray(0, 1000));
+      await downloadResumable(`${wrongRange.url}/b`, b, sha(body), "Test model");
+      expect(wrongRange.requests.map((r) => r.headers.range)).toEqual(["bytes=1000-", undefined]);
+      expect(readFileSync(b)).toEqual(body);
+    } finally {
+      await Promise.all([full.close(), wrongRange.close()]);
+    }
   });
 });
 
