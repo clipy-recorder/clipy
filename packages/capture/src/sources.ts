@@ -77,16 +77,26 @@ export function parseWindowGeometry(text: string): (Rect & { viewable: boolean }
   return { x, y, width, height, viewable: /Map State:\s+IsViewable/.test(text) };
 }
 
+function unescapeXpropString(value: string): string {
+  return value.replace(/\\(["\\])/g, "$1");
+}
+
 /** `xprop -id <id> _NET_WM_NAME WM_NAME WM_CLASS`: title and owning app. */
 export function parseWindowProps(text: string): { title: string; app: string } {
   const quoted = (re: RegExp) => {
     const m = re.exec(text);
-    return m ? m[1].replace(/\\"/g, '"') : "";
+    return m ? unescapeXpropString(m[1]) : "";
   };
-  const title = quoted(/_NET_WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/) || quoted(/WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/);
+
+  const title =
+    quoted(/_NET_WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/) ||
+    quoted(/WM_NAME\([^)]*\) = "((?:[^"\\]|\\.)*)"/);
+
   const cls = /WM_CLASS\([^)]*\) = "((?:[^"\\]|\\.)*)", "((?:[^"\\]|\\.)*)"/.exec(text);
-  return { title, app: cls ? cls[2] : "" };
+
+  return { title, app: cls ? unescapeXpropString(cls[2]) : "" };
 }
+
 
 /** The X display's monitors, or the whole screen as one display. */
 export async function linuxScreens(xDisplay: string, run: Runner = realRunner, env: NodeJS.ProcessEnv = process.env): Promise<ScreenInfo[]> {
