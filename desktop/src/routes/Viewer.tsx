@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { ClipyWordmark } from "../components/ClipyWordmark";
 import { groupTranscriptLines } from "../lib/transcriptLines";
+import { isWindows } from "../lib/platform";
 import {
   readLocalRecording,
   revealLocalRecordingFile,
