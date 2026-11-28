@@ -6,13 +6,11 @@
  * every file has verified, so a model folder is either complete or absent.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
-import { readTar } from "./tar.js";
 import type { LocalModelId } from "./types.js";
 
 export interface ModelFile {
@@ -306,40 +304,7 @@ function processAlive(pid: number): boolean {
   }
 }
 
-/** Decompress a .bz2 file on a worker thread so the event loop stays free. */
-function bunzip2(path: string, signal?: AbortSignal): Promise<Buffer> {
-  const bzipPath = createRequire(import.meta.url).resolve("seek-bzip");
-  const code = `
-    const { parentPort, workerData } = require("node:worker_threads");
-    const fs = require("node:fs");
-    const Bunzip = require(workerData.bzipPath);
-    const out = Bunzip.decode(fs.readFileSync(workerData.path));
-    const ab = out.buffer.slice(out.byteOffset, out.byteOffset + out.length);
-    parentPort.postMessage(ab, [ab]);
-  `;
-  return new Promise((resolve, reject) => {
-    const worker = new Worker(code, { eval: true, workerData: { bzipPath, path } });
-    const onAbort = () => {
-      void worker.terminate();
-      reject(cancelled());
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-    worker.once("message", (ab: ArrayBuffer) => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve(Buffer.from(ab));
-    });
-    worker.once("error", () => {
-      signal?.removeEventListener("abort", onAbort);
-      reject(new Error("The model archive could not be unpacked"));
-    });
-  });
-}
-
-function sha256Hex(buf: Buffer): string {
-  return createHash("sha256").update(buf).digest("hex");
-}
-
-/** Pull the listed members out of a verified archive, checking each one. */
+/** The worker decodes into staging files. Only verified members are published. */
 export async function extractArchiveMembers(
   archivePath: string,
   members: Array<{ name: string; path: string; sha256: string }>,
@@ -347,20 +312,43 @@ export async function extractArchiveMembers(
   label: string,
   signal?: AbortSignal,
 ): Promise<void> {
-  const tar = await bunzip2(archivePath, signal);
-  const wanted = new Map(members.map((m) => [m.name, m]));
-  const found = new Set<string>();
-  for (const entry of readTar(tar)) {
-    const m = wanted.get(entry.name);
-    if (!m) continue;
-    if (sha256Hex(entry.data) !== m.sha256.toLowerCase()) throw new ChecksumError(`${label} (${m.path})`);
-    const tmp = join(outDir, `.${m.path}.${randomBytes(4).toString("hex")}.tmp`);
-    await writeFile(tmp, entry.data);
-    await rename(tmp, join(outDir, m.path));
-    found.add(m.name);
+  if (signal?.aborted) throw cancelled();
+  const staged = members.map((member) => ({
+    ...member,
+    temp: join(outDir, `.${member.path}.${randomBytes(4).toString("hex")}.tmp`),
+  }));
+  try {
+    const worker = new Worker(new URL("./tar.mjs", import.meta.url), {
+      workerData: { archivePath, members: staged },
+      execArgv: [],
+    });
+    await new Promise<void>((resolve, reject) => {
+      let failure: Error | undefined;
+      const abort = () => { void worker.terminate(); };
+      signal?.addEventListener("abort", abort, { once: true });
+      worker.once("message", (result: { checksum?: string; missing?: string[] }) => {
+        if (result.checksum) failure = new ChecksumError(`${label} (${result.checksum})`);
+        else if (result.missing?.length) failure = new Error(`The ${label} archive is missing ${result.missing.join(", ")}`);
+      });
+      worker.once("error", (error: Error) => {
+        failure = "syscall" in error ? error : new Error("The model archive could not be unpacked", { cause: error });
+      });
+      // Wait for exit even on cancellation, so Windows can remove closed staging files.
+      worker.once("exit", (code) => {
+        signal?.removeEventListener("abort", abort);
+        if (signal?.aborted) reject(cancelled());
+        else if (failure) reject(failure);
+        else if (code !== 0) reject(new Error("The model archive could not be unpacked"));
+        else resolve();
+      });
+    });
+    for (const member of staged) {
+      if (signal?.aborted) throw cancelled();
+      await rename(member.temp, join(outDir, member.path));
+    }
+  } finally {
+    await Promise.all(staged.map((member) => rm(member.temp, { force: true })));
   }
-  const missing = members.filter((m) => !found.has(m.name));
-  if (missing.length) throw new Error(`The ${label} archive is missing ${missing.map((m) => m.path).join(", ")}`);
 }
 
 /**
