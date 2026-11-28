@@ -82,6 +82,83 @@ export class NoAudioTrackError extends Error {
   }
 }
 
+/** Why ffmpeg could not open an input file. */
+export type InputProblem = "missing" | "not-media" | "folder" | "permission";
+
+/** The wording for each problem, shown after the file name: "<file> does not exist". */
+const INPUT_PROBLEM_TEXT: Record<InputProblem, string> = {
+  missing: "does not exist",
+  "not-media": "is not a video or audio file",
+  folder: "is a folder",
+  permission: "cannot be opened: permission denied",
+};
+
+/** What the operating system says about the input path itself. */
+export type PathState = "missing" | "folder" | "denied" | "file" | "unknown";
+
+/**
+ * Ask the filesystem about the input. This is the same answer on every
+ * platform, unlike ffmpeg's wording: on Windows ffmpeg reports a folder as
+ * "Permission denied", so stderr alone would call a folder unreadable.
+ */
+export async function pathState(path: string): Promise<PathState> {
+  try {
+    return (await stat(resolve(path))).isDirectory() ? "folder" : "file";
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return "missing";
+    if (code === "EACCES" || code === "EPERM") return "denied";
+    return "unknown";
+  }
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * The reason ffmpeg gives for failing to open the input, or null when its
+ * stderr has no such line. Only lines about opening the *input* count, so a
+ * failure on the output file or a stray word elsewhere is never blamed on it.
+ * Covers the newer wording ("Error opening input: <reason>", "Error opening
+ * input files: <reason>") and the older "<input>: <reason>" line.
+ */
+export function inputOpenReason(stderr: string, input: string): string | null {
+  const patterns = [
+    /^\[in#\d+ @ [^\]]+\] Error opening input: (.+?)\s*$/m,
+    /^Error opening input files?: (.+?)\s*$/m,
+    new RegExp(`^${escapeRegExp(input)}: (.+?)\\s*$`, "m"),
+  ];
+  for (const re of patterns) {
+    const m = re.exec(stderr);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * Decide why an input could not be read. The filesystem answer wins, because
+ * it is certain and the same on every OS; ffmpeg's own reason is only used for
+ * a path that exists as a file. Null means "unknown": keep the generic message.
+ */
+export function classifyInputProblem(state: PathState, reason: string | null): InputProblem | null {
+  if (state === "missing") return "missing";
+  if (state === "folder") return "folder";
+  if (state === "denied") return "permission";
+  const r = reason?.toLowerCase();
+  if (r === "no such file or directory") return "missing";
+  if (r === "is a directory") return "folder";
+  if (r === "permission denied") return "permission";
+  if (r === "invalid data found when processing input") return "not-media";
+  return null;
+}
+
+/** "<file> does not exist" and friends, or null when the cause is not one we can name. */
+async function describeInputProblem(inputPath: string, stderr: string): Promise<string | null> {
+  const problem = classifyInputProblem(await pathState(inputPath), inputOpenReason(stderr, ffmpegInput(inputPath)));
+  return problem ? `${inputPath} ${INPUT_PROBLEM_TEXT[problem]}` : null;
+}
+
 const DURATION_RE = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 
 /**
@@ -95,9 +172,9 @@ export async function probeMedia(inputPath: string, signal?: AbortSignal): Promi
   const hasAudio = /Stream #\d+:\d+[^\n]*: Audio:/.test(header.stderr);
   const m = DURATION_RE.exec(header.stderr);
   if (m) return { durationSec: Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]), hasAudio };
-  if (/No such file|Invalid data found|Permission denied|Error opening input/i.test(header.stderr)) {
-    throw new Error(`ffmpeg could not read ${inputPath}`);
-  }
+  const problem = await describeInputProblem(inputPath, header.stderr);
+  if (problem) throw new Error(problem);
+  if (inputOpenReason(header.stderr, ffmpegInput(inputPath)) !== null) throw new Error(`ffmpeg could not read ${inputPath}`);
   const decode = await runFfmpeg(
     ["-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:2", "-i", ffmpegInput(inputPath), "-map", "0", "-c", "copy", "-f", "null", "-"],
     signal,
@@ -134,6 +211,8 @@ export async function extractAudio(inputPath: string, outWavPath: string, signal
   );
   if (code !== 0) {
     if (/does not contain any stream|Output file #0 does not contain|matches no streams/i.test(stderr)) throw new NoAudioTrackError(inputPath);
+    const problem = await describeInputProblem(inputPath, stderr);
+    if (problem) throw new Error(problem);
     throw new Error(`ffmpeg could not read the audio in ${inputPath} (exit ${code})`);
   }
 }
