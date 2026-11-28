@@ -47,6 +47,23 @@ describe("parseSilencedetectOutput", () => {
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
   });
+
+  it("reads timestamps in exponent notation", () => {
+    const out = [
+      "silence_start: 1.5e-05",
+      "silence_end: 2.5e+00 | silence_duration: 2.499985e+00",
+      "silence_start: 2.5e-05",
+      "silence_end: 3.5e-05 | silence_duration: 1e-05",
+    ].join("\n");
+
+    const spans = parseSilencedetectOutput(out);
+
+    expect(spans).toHaveLength(2);
+    expect(spans[0].startSec).toBeCloseTo(0.000015, 10);
+    expect(spans[0].endSec).toBeCloseTo(2.5, 10);
+    expect(spans[1].startSec).toBeCloseTo(0.000025, 10);
+    expect(spans[1].endSec).toBeCloseTo(0.000035, 10);
+  });
 });
 
 describe("planChunks", () => {
