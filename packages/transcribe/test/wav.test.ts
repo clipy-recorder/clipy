@@ -99,6 +99,19 @@ describe("readWavInfo", () => {
     });
   });
 
+  it("counts the bit depth in the duration of 24-bit audio", async () => {
+    // 48 000 frames/s * 2 channels * 3 bytes = 288 000 bytes per second.
+    const path = writeFile(riff(chunk("fmt ", fmtBody(48_000, 2, 24)), chunk("data", pcm(144_000))));
+    expect(await readWavInfo(path)).toEqual({
+      sampleRate: 48_000,
+      channels: 2,
+      bitsPerSample: 24,
+      dataOffset: 44,
+      dataBytes: 144_000,
+      durationSec: 0.5,
+    });
+  });
+
   it("uses the file size when a streamed WAV says its data is 0xFFFFFFFF bytes", async () => {
     const wav = wavFromPcm(pcm(8_000));
     wav.writeUInt32LE(0xffffffff, 4);
