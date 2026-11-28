@@ -279,6 +279,28 @@ describe("a malformed file", () => {
     expect(error.stack ?? "").not.toContain("sk-secret-123");
   });
 
+  it("names line and column for an unquoted value without leaking it", () => {
+    writeConfig('{\n  "model": { "preset": "openrouter", "apiKey": sk-or-123 }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toBe(`The config file ${file} is not valid JSON at line 2, column 48.`);
+    expect(error.message).not.toContain("sk-or-123");
+    expect(error.stack ?? "").not.toContain("sk-or-123");
+  });
+
+  it("names line and column for a single-quoted string without leaking it", () => {
+    writeConfig('{\n  "transcription": { "kind": \'deepgram\' }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toBe(`The config file ${file} is not valid JSON at line 2, column 30.`);
+    expect(error.message).not.toContain("deepgram");
+    expect(error.stack ?? "").not.toContain("deepgram");
+  });
+
+  it("names line and column for truncated JSON", () => {
+    writeConfig("{\n  \"model\": ");
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toBe(`The config file ${file} is not valid JSON at line 2, column 12.`);
+  });
+
   it("names the bad field", () => {
     writeConfig({ model: { preset: "anthropic", apiKey: "sk-secret-123" } });
     const error = errorOf(() => loadConfig(env));

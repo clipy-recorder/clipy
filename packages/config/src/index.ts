@@ -92,6 +92,170 @@ function lineAndColumn(text: string, offset: number): string {
   return `line ${before.length}, column ${before[before.length - 1].length + 1}`;
 }
 
+/**
+ * Find the 0-based character offset of the first RFC 8259 JSON syntax error.
+ * Used when V8's SyntaxError omits "at position N" (e.g. unquoted values or
+ * single-quoted strings), without ever quoting file contents.
+ */
+function findJsonErrorOffset(text: string): number | undefined {
+  let pos = 0;
+  const len = text.length;
+  let errorPos: number | undefined;
+
+  const fail = (at = pos): false => {
+    if (errorPos === undefined) errorPos = at;
+    return false;
+  };
+  const skipWs = () => {
+    while (pos < len) {
+      const ch = text.charCodeAt(pos);
+      if (ch === 0x20 || ch === 0x09 || ch === 0x0a || ch === 0x0d) pos++;
+      else break;
+    }
+  };
+  const isDigit = (ch: number) => ch >= 0x30 && ch <= 0x39;
+  const isHex = (ch: number) =>
+    isDigit(ch) || (ch >= 0x41 && ch <= 0x46) || (ch >= 0x61 && ch <= 0x66);
+
+  const parseString = (): boolean => {
+    pos++; // skip opening '"'
+    while (pos < len) {
+      const ch = text.charCodeAt(pos);
+      if (ch === 0x22) {
+        pos++;
+        return true;
+      }
+      if (ch < 0x20) return fail();
+      if (ch === 0x5c) {
+        pos++;
+        if (pos >= len) return fail();
+        const esc = text[pos];
+        if (esc === "u") {
+          pos++;
+          for (let i = 0; i < 4; i++) {
+            if (pos >= len || !isHex(text.charCodeAt(pos))) return fail();
+            pos++;
+          }
+        } else if (
+          esc === '"' ||
+          esc === "\\" ||
+          esc === "/" ||
+          esc === "b" ||
+          esc === "f" ||
+          esc === "n" ||
+          esc === "r" ||
+          esc === "t"
+        ) {
+          pos++;
+        } else {
+          return fail();
+        }
+      } else {
+        pos++;
+      }
+    }
+    return fail();
+  };
+
+  const parseNumber = (): boolean => {
+    if (text[pos] === "-") pos++;
+    if (pos >= len) return fail();
+    if (text[pos] === "0") {
+      pos++;
+    } else if (text[pos] >= "1" && text[pos] <= "9") {
+      pos++;
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    } else {
+      return fail();
+    }
+    if (pos < len && text[pos] === ".") {
+      pos++;
+      if (pos >= len || !isDigit(text.charCodeAt(pos))) return fail();
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    }
+    if (pos < len && (text[pos] === "e" || text[pos] === "E")) {
+      pos++;
+      if (pos < len && (text[pos] === "+" || text[pos] === "-")) pos++;
+      if (pos >= len || !isDigit(text.charCodeAt(pos))) return fail();
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    }
+    return true;
+  };
+
+  const parseLiteral = (lit: string): boolean => {
+    for (let i = 0; i < lit.length; i++) {
+      if (pos >= len || text[pos] !== lit[i]) return fail();
+      pos++;
+    }
+    return true;
+  };
+
+  const parseObject = (): boolean => {
+    pos++; // skip '{'
+    skipWs();
+    if (pos < len && text[pos] === "}") {
+      pos++;
+      return true;
+    }
+    while (true) {
+      skipWs();
+      if (pos >= len || text[pos] !== '"') return fail();
+      if (!parseString()) return false;
+      skipWs();
+      if (pos >= len || text[pos] !== ":") return fail();
+      pos++;
+      skipWs();
+      if (!parseValue()) return false;
+      skipWs();
+      if (pos < len && text[pos] === "}") {
+        pos++;
+        return true;
+      }
+      if (pos >= len || text[pos] !== ",") return fail();
+      pos++;
+    }
+  };
+
+  const parseArray = (): boolean => {
+    pos++; // skip '['
+    skipWs();
+    if (pos < len && text[pos] === "]") {
+      pos++;
+      return true;
+    }
+    while (true) {
+      skipWs();
+      if (!parseValue()) return false;
+      skipWs();
+      if (pos < len && text[pos] === "]") {
+        pos++;
+        return true;
+      }
+      if (pos >= len || text[pos] !== ",") return fail();
+      pos++;
+    }
+  };
+
+  const parseValue = (): boolean => {
+    skipWs();
+    if (pos >= len) return fail();
+    const ch = text[pos];
+    if (ch === "{") return parseObject();
+    if (ch === "[") return parseArray();
+    if (ch === '"') return parseString();
+    if (ch === "t") return parseLiteral("true");
+    if (ch === "f") return parseLiteral("false");
+    if (ch === "n") return parseLiteral("null");
+    if (ch === "-" || (ch >= "0" && ch <= "9")) return parseNumber();
+    return fail();
+  };
+
+  if (!parseValue()) return errorPos;
+  skipWs();
+  if (pos < len) return pos;
+  return undefined;
+}
+
 /** The file as saved, validated. A missing file is an empty config. */
 function readStored(path: string): StoredFile {
   let text: string;
@@ -110,7 +274,8 @@ function readStored(path: string): StoredFile {
   } catch (error) {
     // V8's message can quote part of the file, which may hold a key. Keep only the position.
     const position = /position (\d+)/.exec(String((error as Error).message))?.[1];
-    const where = position ? ` at ${lineAndColumn(text, Number(position))}` : "";
+    const offset = position ? Number(position) : findJsonErrorOffset(text);
+    const where = offset !== undefined ? ` at ${lineAndColumn(text, offset)}` : "";
     throw new ConfigError(`The config file ${path} is not valid JSON${where}.`);
   }
   const parsed = storedConfigSchema.safeParse(raw);
