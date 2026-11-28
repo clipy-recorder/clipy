@@ -164,10 +164,32 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
       const len = head.readUInt32LE(pos + 4);
       const body = pos + 8;
       if (id === "fmt ") {
+        if (len < 16 || body + 16 > head.length || len > size - body) {
+          throw new Error(`${path} has an incomplete WAV format chunk`);
+        }
+        const format = head.readUInt16LE(body);
+        let supportedPcm = format === 1;
+        if (format === 0xfffe) {
+          if (len < 40 || body + 40 > head.length || len > size - body || head.readUInt16LE(body + 16) < 22) {
+            throw new Error(`${path} has an incomplete WAV extensible format chunk`);
+          }
+          supportedPcm = head.subarray(body + 24, body + 40).equals(
+            Buffer.from([1, 0, 0, 0, 0, 0, 16, 0, 128, 0, 0, 170, 0, 56, 155, 113]),
+          );
+        }
+        if (!supportedPcm) {
+          throw new Error(`${path} uses unsupported WAV encoding format ${format}; only PCM is supported`);
+        }
+        const channels = head.readUInt16LE(body + 2);
+        const sampleRate = head.readUInt32LE(body + 4);
+        const bits = head.readUInt16LE(body + 14);
+        if (channels === 0 || sampleRate === 0 || bits === 0) {
+          throw new Error(`${path} has invalid WAV format information`);
+        }
         fmt = {
-          channels: head.readUInt16LE(body + 2),
-          sampleRate: head.readUInt32LE(body + 4),
-          bits: head.readUInt16LE(body + 14),
+          channels,
+          sampleRate,
+          bits,
         };
       } else if (id === "data") {
         if (!fmt) break;
