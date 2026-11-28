@@ -1140,41 +1140,16 @@ fn read_f32_sample(bytes: &[u8], sample_idx: usize) -> Result<f32> {
 }
 
 // ---------------------------------------------------------------------------
-// Smoke test (macOS only — uses a hardcoded brew ffprobe path for verification)
+// Encoder unit tests
 // ---------------------------------------------------------------------------
 
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn constrained_vbr_allows_fifty_percent_peak_headroom() {
         assert_eq!(constrained_vbr_max_bitrate(3_500_000), 5_250_000);
-    }
-
-    /// Black NV12 frame at PTS, ready to feed straight to the encoder.
-    fn black_nv12_frame(width: u32, height: u32, pts_us: i64) -> frame::Video {
-        let mut f = frame::Video::new(Pixel::NV12, width, height);
-        // Y plane = 16 (limited-range black), UV plane = 128 (chroma neutral).
-        f.data_mut(0).fill(16);
-        f.data_mut(1).fill(128);
-        f.set_pts(Some(pts_us));
-        f
-    }
-
-    /// 1024-sample silent planar f32 stereo frame at PTS.
-    fn silent_audio_frame(samples: usize, pts: i64) -> frame::Audio {
-        let mut f = frame::Audio::new(
-            Sample::F32(format::sample::Type::Planar),
-            samples,
-            ffmpeg::ChannelLayout::STEREO,
-        );
-        f.set_rate(SAMPLE_RATE as u32);
-        for plane in 0..2 {
-            f.data_mut(plane).fill(0);
-        }
-        f.set_pts(Some(pts));
-        f
     }
 
     #[test]
@@ -1235,6 +1210,37 @@ mod tests {
         assert_eq!(uv[0], 128);
         assert_eq!(uv[uv_stride + 2], 90);
         assert_eq!(uv[uv_stride + 6], 128);
+    }
+}
+
+// Smoke tests for the macOS encoder setup.
+#[cfg(all(test, target_os = "macos"))]
+mod macos_tests {
+    use super::*;
+
+    /// Black NV12 frame at PTS, ready to feed straight to the encoder.
+    fn black_nv12_frame(width: u32, height: u32, pts_us: i64) -> frame::Video {
+        let mut f = frame::Video::new(Pixel::NV12, width, height);
+        // Y plane = 16 (limited-range black), UV plane = 128 (chroma neutral).
+        f.data_mut(0).fill(16);
+        f.data_mut(1).fill(128);
+        f.set_pts(Some(pts_us));
+        f
+    }
+
+    /// 1024-sample silent planar f32 stereo frame at PTS.
+    fn silent_audio_frame(samples: usize, pts: i64) -> frame::Audio {
+        let mut f = frame::Audio::new(
+            Sample::F32(format::sample::Type::Planar),
+            samples,
+            ffmpeg::ChannelLayout::STEREO,
+        );
+        f.set_rate(SAMPLE_RATE as u32);
+        for plane in 0..2 {
+            f.data_mut(plane).fill(0);
+        }
+        f.set_pts(Some(pts));
+        f
     }
 
     #[test]
