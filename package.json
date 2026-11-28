@@ -9,7 +9,7 @@
     "build": "pnpm -r run build",
     "test": "pnpm -r run test && node scripts/plugin-pins.test.mjs",
     "typecheck": "pnpm -r run typecheck",
-    "test:plugins": "node scripts/plugin-pins.test.mjs"
+    "test:plugins": "node scripts/plugin-pins.test.mjs && node --experimental-transform-types --loader ./scripts/plugin-test-loader.mjs --test scripts/plugin-record-helpers.test.mjs"
   },
   "packageManager": "pnpm@10.18.0",
   "devDependencies": {

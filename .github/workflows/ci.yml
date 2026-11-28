@@ -49,6 +49,32 @@ jobs:
       - run: pnpm run typecheck
       - run: pnpm test
 
+  plugin-record:
+    name: Record button helpers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+
+      # Pure-function tests for the helpers in display.ts, cloud.ts,
+      # signin.ts and register.tsx. Uses a custom loader to resolve
+      # extensionless .ts imports and stub the claude-code package.
+      #
+      # The full register.test.tsx (~1,000 lines) needs `claude plugin test`
+      # with a signed-in session and cannot run headless in CI without
+      # secrets. See CONTRIBUTING.md for running it locally.
+      - name: Record button helper tests
+        run: >-
+          node --experimental-transform-types
+          --loader ./scripts/plugin-test-loader.mjs
+          --test scripts/plugin-record-helpers.test.mjs
+
   desktop-macos:
     name: Clipy Local (macOS)
     runs-on: macos-15
