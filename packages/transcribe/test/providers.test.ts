@@ -10,6 +10,7 @@ import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
+import { runInPieces } from "../src/providers/common.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
@@ -485,5 +486,180 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+describe("a failed hosted piece", () => {
+  // 30 s with pauses at 10 s and 20 s: three pieces of 10 s each.
+  const LIMITS = { maxSec: 12, targetSec: 10 };
+  const PAUSES = [
+    { startSec: 9, endSec: 11 },
+    { startSec: 19, endSec: 21 },
+  ];
+  const threePieces = () => audioInput(30, PAUSES);
+  const piece = (n: number) => ({ segments: [{ start: 1, end: 2, text: `part ${n}` }] });
+  const geminiReply = (obj: unknown) => ({ candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
+
+  /** A Gemini stub that answers every piece, except those `failures` names (by request number) with that status. */
+  async function stubGemini(failures: Record<number, number>) {
+    let n = 0;
+    server = await fakeServer((_req, res) => {
+      n++;
+      // The failing body echoes the key and transcript text; neither may reach a gap reason or an error.
+      if (failures[n]) return json(res, { error: { message: `${KEY} ${SECRET_TEXT}` } }, failures[n]);
+      json(res, geminiReply(piece(n)));
+    });
+    return { apiKey: KEY, baseUrl: server.url };
+  }
+
+  /** runInPieces over three pieces, where the calls named in `failures` throw. */
+  async function runThree(failures: Record<number, Error>, input?: Awaited<ReturnType<typeof threePieces>>) {
+    let calls = 0;
+    const result = runInPieces(input ?? (await threePieces()), LIMITS, async () => {
+      calls++;
+      if (failures[calls]) throw failures[calls];
+      return piece(calls);
+    });
+    return { result, calls: () => calls };
+  }
+
+  const http = (status: number) => new ProviderError("stub", status);
+
+  it("becomes a gap, and the pieces around it are kept", async () => {
+    const config = await stubGemini({ 2: 500 });
+    const input = await threePieces();
+    const r = await transcribeGemini(input, config, LIMITS);
+    expect(server!.requests).toHaveLength(3);
+    expect(r.segments).toEqual([
+      { startMs: 1000, endMs: 2000, text: "part 1" },
+      { startMs: 21000, endMs: 22000, text: "part 3" },
+    ]);
+    expect(r.gaps).toEqual([{ startMs: 10000, endMs: 20000, reason: "gemini transcription failed (HTTP 500)" }]);
+    expect(input.progress.at(-1)).toBe(1);
+    expect(JSON.stringify(r)).not.toContain(KEY);
+    expect(JSON.stringify(r)).not.toContain(SECRET_TEXT);
+  });
+
+  it("works the same for an OpenAI-compatible provider", async () => {
+    let n = 0;
+    server = await fakeServer((_req, res) => (++n === 2 ? json(res, { error: `${KEY} ${SECRET_TEXT}` }, 500) : json(res, piece(n))));
+    const r = await transcribeOpenAICompatible(await threePieces(), { baseUrl: server.url, apiKey: KEY, model: "m" }, { maxUploadBytes: 44 + 12 * 32000 });
+    expect(r.segments.map((s) => s.text)).toEqual(["part 1", "part 3"]);
+    expect(r.gaps).toEqual([{ startMs: 10000, endMs: 20000, reason: "openai-compatible transcription failed (HTTP 500)" }]);
+    expect(JSON.stringify(r)).not.toContain(KEY);
+    expect(JSON.stringify(r)).not.toContain(SECRET_TEXT);
+  });
+
+  it("rejects the whole run on a 401", async () => {
+    const config = await stubGemini({ 2: 401 });
+    await expectSafeError(transcribeGemini(await threePieces(), config, LIMITS), "gemini", 401);
+    expect(server!.requests).toHaveLength(2);
+  });
+
+  it.each([401, 403, 404, 413])("stops at once on HTTP %i, even after a success", async (status) => {
+    const failure = http(status);
+    const { result, calls } = await runThree({ 2: failure });
+    await expect(result).rejects.toBe(failure);
+    expect(calls()).toBe(2);
+  });
+
+  it("stops on a 400 while nothing has succeeded (a bad Gemini key answers 400)", async () => {
+    const config = await stubGemini({ 1: 400, 2: 400, 3: 400 });
+    await expectSafeError(transcribeGemini(await threePieces(), config, LIMITS), "gemini", 400);
+    expect(server!.requests).toHaveLength(1);
+  });
+
+  it("stops on a 400 that follows another failure, with still nothing transcribed", async () => {
+    const second = http(400);
+    const { result, calls } = await runThree({ 1: http(500), 2: second });
+    await expect(result).rejects.toBe(second);
+    expect(calls()).toBe(2);
+  });
+
+  it("records a 400 as a gap once a piece has succeeded", async () => {
+    const { result, calls } = await runThree({ 2: http(400) });
+    const r = await result;
+    expect(calls()).toBe(3);
+    expect(r.segments.map((s) => s.text)).toEqual(["part 1", "part 3"]);
+    expect(r.gaps).toHaveLength(1);
+  });
+
+  it.each([402, 408, 422, 429, 502, 503])("records HTTP %i as a gap and carries on", async (status) => {
+    const { result, calls } = await runThree({ 1: http(status) });
+    const r = await result;
+    expect(calls()).toBe(3);
+    expect(r.segments.map((s) => s.text)).toEqual(["part 2", "part 3"]);
+    expect(r.gaps).toMatchObject([{ startMs: 0, endMs: 10000 }]);
+  });
+
+  it("covers failures with no HTTP status and unusable answers", async () => {
+    const network = new ProviderError("stub", undefined, "network error (ECONNRESET)");
+    const badAnswer = new ProviderError("stub", 200, "the answer was not valid JSON");
+    const r = await (await runThree({ 2: network, 3: badAnswer })).result;
+    expect(r.segments.map((s) => s.text)).toEqual(["part 1"]);
+    expect(r.gaps).toEqual([
+      { startMs: 10000, endMs: 20000, reason: network.message },
+      { startMs: 20000, endMs: 30000, reason: badAnswer.message },
+    ]);
+  });
+
+  it("takes the language from the first piece that succeeds", async () => {
+    let calls = 0;
+    const r = await runInPieces(await threePieces(), LIMITS, async () => {
+      if (++calls === 1) throw http(500);
+      return { ...piece(calls), language: calls === 2 ? "de" : "en" };
+    });
+    expect(r.language).toBe("de");
+  });
+
+  it("rejects with the first error when every piece fails", async () => {
+    const first = http(500);
+    const { result, calls } = await runThree({ 1: first, 2: http(502), 3: http(503) });
+    await expect(result).rejects.toBe(first);
+    expect(calls()).toBe(3);
+  });
+
+  it("rejects when every piece that was sent failed, though a silent one was skipped", async () => {
+    // The middle piece is silent, so it is never sent and does not count as a success.
+    const input = await audioInput(30, [
+      { startSec: 9, endSec: 11 },
+      { startSec: 10, endSec: 20 },
+      { startSec: 19, endSec: 21 },
+    ]);
+    const first = http(500);
+    const { result, calls } = await runThree({ 1: first, 2: http(503) }, input);
+    await expect(result).rejects.toBe(first);
+    expect(calls()).toBe(2);
+  });
+
+  it("does not hide an error that did not come from the provider", async () => {
+    const bug = new TypeError("not a provider failure");
+    const { result, calls } = await runThree({ 2: bug });
+    await expect(result).rejects.toBe(bug);
+    expect(calls()).toBe(2);
+  });
+
+  it("rejects with AbortError when cancelled mid-way", async () => {
+    let n = 0;
+    const ac = new AbortController();
+    server = await fakeServer((_req, res) => {
+      if (++n === 2) return ac.abort();
+      json(res, geminiReply(piece(n)));
+    });
+    const input = { ...(await threePieces()), signal: ac.signal };
+    await expect(transcribeGemini(input, { apiKey: KEY, baseUrl: server.url }, LIMITS)).rejects.toMatchObject({ name: "AbortError" });
+    expect(server.requests).toHaveLength(2);
+  });
+
+  it("lets cancellation win over a provider error on the last piece", async () => {
+    // No later loop iteration would notice the abort, so the failure path must.
+    const ac = new AbortController();
+    let calls = 0;
+    const result = runInPieces({ ...(await threePieces()), signal: ac.signal }, LIMITS, async () => {
+      if (++calls < 3) return piece(calls);
+      ac.abort();
+      throw http(500);
+    });
+    await expect(result).rejects.toMatchObject({ name: "AbortError" });
   });
 });
