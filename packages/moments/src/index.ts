@@ -9,6 +9,8 @@
  *   "it breaks here" and similar, using the provider the user configured.
  */
 import { runWithModelProvider, type ModelProvider } from "./llm.js";
+import { detectFlareSpans, type CursorEvent } from "./generated/keyMomentsCursorContext.js";
+import { FLARE_SAMPLE_MAX_GAP_MS, FLARE_TRAIL_LEAD_MS } from "./generated/keyMomentsFusion.js";
 import {
   describePlannerError,
   localMomentInput,
@@ -80,6 +82,8 @@ interface EdgeEvent {
   time_ms?: unknown;
   key_code?: unknown;
   button?: unknown;
+  x?: unknown;
+  y?: unknown;
 }
 
 /**
@@ -137,13 +141,132 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
 }
 
 /**
- * Interactions thinned to `limit`, in their original order: button, key and
- * annotation events first (thinned only when they alone pass the limit, see
- * thinEdges), then scrolls, and pointer moves are thinned evenly into what is
- * left. Within the limit the array comes back unchanged. (A 20 Hz pointer
- * track passes 8000 events in under seven minutes.)
+ * Pick the index of the move event that `flarePosition(moves, atMs)` will
+ * select: nearest sample within `FLARE_SAMPLE_MAX_GAP_MS` (matching
+ * `cursorPositionAt`), falling back to the latest sample at or before `atMs`
+ * (matching `cursorPositionBefore`).
  */
-export function boundInteractions<T>(events: readonly T[], limit = MAX_PLANNER_INTERACTIONS): T[] {
+function flareMoveIndex(moves: readonly { index: number; tMs: number }[], atMs: number): number | null {
+  if (moves.length === 0) return null;
+  let lo = 0;
+  let hi = moves.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (moves[mid].tMs < atMs) lo = mid + 1;
+    else hi = mid;
+  }
+  let best = moves[lo];
+  const previous = lo > 0 ? moves[lo - 1] : undefined;
+  if (previous && Math.abs(previous.tMs - atMs) < Math.abs(best.tMs - atMs)) best = previous;
+  if (Math.abs(best.tMs - atMs) <= FLARE_SAMPLE_MAX_GAP_MS) return best.index;
+
+  let bLo = 0;
+  let bHi = moves.length;
+  while (bLo < bHi) {
+    const mid = (bLo + bHi) >> 1;
+    if (moves[mid].tMs <= atMs) bLo = mid + 1;
+    else bHi = mid;
+  }
+  return bLo > 0 ? moves[bLo - 1].index : null;
+}
+
+/**
+ * Find the pointer move indices required to anchor every Control-hold flare,
+ * plus the count of essential edges (annotations, Control keys, and chord
+ * presses/releases) so anchor moves never evict essential edges.
+ */
+function flareAnchorMoves<T>(
+  events: readonly T[],
+  edges: readonly number[],
+  rest: readonly number[],
+  durationMs?: number,
+): { anchors: number[]; essentialEdges: number } {
+  if (rest.length === 0) return { anchors: [], essentialEdges: 0 };
+  const at = (i: number) => events[i] as EdgeEvent;
+  const hasControl = edges.some((i) => {
+    const e = at(i);
+    return (e.kind === "key_down" || e.kind === "key_up") && typeof e.key_code === "number" && CONTROL_KEYCODES.has(e.key_code);
+  });
+  if (!hasControl) return { anchors: [], essentialEdges: 0 };
+  const maxTime = typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs >= 0 ? durationMs : Infinity;
+  const time = (i: number) => (typeof at(i).time_ms === "number" ? (at(i).time_ms as number) : 0);
+  const orderedEdges = [...edges].sort((a, b) => time(a) - time(b) || a - b);
+
+  let essentialEdges = 0;
+  let held = 0;
+  const openChordKeys = new Map<number, number>();
+  const keyEvents: CursorEvent[] = [];
+
+  for (const i of orderedEdges) {
+    const e = at(i);
+    const code = e.key_code;
+    if (e.kind === "annotation") {
+      essentialEdges += 1;
+    } else if ((e.kind === "key_down" || e.kind === "key_up") && typeof code === "number" && CONTROL_KEYCODES.has(code)) {
+      essentialEdges += 1;
+      held = e.kind === "key_down" ? held + 1 : 0;
+    } else if (e.kind === "key_down" && held > 0 && typeof code === "number" && !isModifierKeycode(code)) {
+      essentialEdges += 1;
+      openChordKeys.set(code, (openChordKeys.get(code) ?? 0) + 1);
+    } else if (e.kind === "key_up" && typeof code === "number") {
+      const open = openChordKeys.get(code) ?? 0;
+      if (open > 0) {
+        essentialEdges += 1;
+        if (open === 1) openChordKeys.delete(code);
+        else openChordKeys.set(code, open - 1);
+      }
+    }
+
+    if ((e.kind === "key_down" || e.kind === "key_up") && typeof e.time_ms === "number" && Number.isFinite(e.time_ms) && e.time_ms >= 0 && e.time_ms <= maxTime) {
+      keyEvents.push({
+        kind: e.kind,
+        time_ms: e.time_ms,
+        x: null,
+        y: null,
+        delta_x: null,
+        delta_y: null,
+        key_code: typeof code === "number" && Number.isFinite(code) ? code : null,
+        button: null,
+        cursor_type: null,
+        active: null,
+      });
+    }
+  }
+
+  const flares = detectFlareSpans(keyEvents);
+  if (flares.length === 0) return { anchors: [], essentialEdges };
+
+  const moves: Array<{ index: number; tMs: number }> = [];
+  for (const i of rest) {
+    const e = at(i);
+    if (
+      e.kind === "move" &&
+      typeof e.time_ms === "number" &&
+      Number.isFinite(e.time_ms) &&
+      e.time_ms >= 0 &&
+      e.time_ms <= maxTime &&
+      typeof e.x === "number" &&
+      Number.isFinite(e.x) &&
+      typeof e.y === "number" &&
+      Number.isFinite(e.y)
+    ) {
+      moves.push({ index: i, tMs: e.time_ms });
+    }
+  }
+  if (moves.length === 0) return { anchors: [], essentialEdges };
+  moves.sort((a, b) => a.tMs - b.tMs || a.index - b.index);
+
+  const anchorSet = new Set<number>();
+  for (const flare of flares) {
+    const rawAt = Math.max(flare.startMs, flare.endMs - FLARE_TRAIL_LEAD_MS);
+    const atMs = maxTime < Infinity ? Math.min(rawAt, maxTime) : rawAt;
+    const idx = flareMoveIndex(moves, atMs);
+    if (idx !== null) anchorSet.add(idx);
+  }
+  return { anchors: [...anchorSet].sort((a, b) => a - b), essentialEdges };
+}
+
+function boundInteractionsFor<T>(events: readonly T[], limit: number, durationMs?: number): T[] {
   if (events.length <= limit) return events as T[];
   const kindOf = (e: T) => (e && typeof e === "object" ? (e as { kind?: unknown }).kind : undefined);
   const edges: number[] = [];
@@ -155,18 +278,39 @@ export function boundInteractions<T>(events: readonly T[], limit = MAX_PLANNER_I
     else if (kind === "scroll") scrolls.push(i);
     else rest.push(i);
   });
-  const keptEdges = thinEdges(events, edges, limit);
-  const keptScrolls = evenly(scrolls, limit - keptEdges.length);
-  const keptRest = evenly(rest, limit - keptEdges.length - keptScrolls.length);
-  const keep = new Set([...keptEdges, ...keptScrolls, ...keptRest]);
+  const { anchors, essentialEdges } = flareAnchorMoves(events, edges, rest, durationMs);
+  const anchorRoom =
+    edges.length > limit
+      ? Math.max(0, limit - essentialEdges)
+      : Math.max(0, limit - edges.length);
+  const keptAnchors = evenly(anchors, Math.min(anchors.length, anchorRoom));
+  const keptEdges = thinEdges(events, edges, limit - keptAnchors.length);
+  const keptScrolls = evenly(scrolls, limit - keptEdges.length - keptAnchors.length);
+  const anchorSet = new Set(keptAnchors);
+  const remainingRest = anchorSet.size > 0 ? rest.filter((i) => !anchorSet.has(i)) : rest;
+  const keptRest = evenly(remainingRest, limit - keptEdges.length - keptAnchors.length - keptScrolls.length);
+  const keep = new Set([...keptEdges, ...keptAnchors, ...keptScrolls, ...keptRest]);
   return events.filter((_e, i) => keep.has(i));
 }
 
+/**
+ * Interactions thinned to `limit`, in their original order: button, key and
+ * annotation events first (thinned only when they alone pass the limit, see
+ * thinEdges) while reserving the pointer move sample each Control-hold flare
+ * needs for its position, then scrolls, and remaining pointer moves thinned
+ * evenly into what is left. Within the limit the array comes back unchanged.
+ * (A 20 Hz pointer track passes 8000 events in under seven minutes.)
+ */
+export function boundInteractions<T>(events: readonly T[], limit = MAX_PLANNER_INTERACTIONS): T[] {
+  return boundInteractionsFor(events, limit);
+}
+
 export async function planMoments(input: LocalMomentInput, options: PlanOptions = {}): Promise<PlanResult> {
-  const raw = input as { interactions?: unknown };
+  const raw = input as { interactions?: unknown; durationMs?: unknown };
+  const durationMs = typeof raw.durationMs === "number" ? raw.durationMs : undefined;
   const bounded =
     Array.isArray(raw.interactions) && raw.interactions.length > MAX_PLANNER_INTERACTIONS
-      ? { ...input, interactions: boundInteractions(input.interactions) }
+      ? { ...input, interactions: boundInteractionsFor(input.interactions, MAX_PLANNER_INTERACTIONS, durationMs) }
       : input;
   const parsed = localMomentInput.parse(bounded);
   const provider = options.provider ?? null;
