@@ -275,7 +275,12 @@ describe.skipIf(!enabled || process.platform !== "linux")("no orphans when the p
   });
 });
 
-describe.skipIf(!enabled || !findExecutable("xauth", "linux"))("virtual display access control", () => {
+const canTestAccessControl = process.platform === "linux" &&
+  findExecutable("Xvfb", "linux") !== null &&
+  findExecutable("xauth", "linux") !== null &&
+  findExecutable("python3", "linux") !== null;
+
+describe.skipIf(!canTestAccessControl)("virtual display access control", () => {
   it("starts Xvfb with a cookie and no TCP listener, and stop() can be called twice", async () => {
     const display = await startVirtualDisplay({ width: 640, height: 480 });
     try {
@@ -286,10 +291,10 @@ describe.skipIf(!enabled || !findExecutable("xauth", "linux"))("virtual display 
       // With the cookie, a client connects.
       const withCookie = spawnSync("python3", ["-c", OPEN_DISPLAY], { env: display.env({ PATH: process.env.PATH }) });
       expect(withCookie.status).toBe(0);
-      // This same user also connects with DISPLAY alone (localuser), unless the display said apps need XAUTHORITY.
+      // The localuser grant must survive after the short-lived clients exit.
       const sameUser = spawnSync("python3", ["-c", OPEN_DISPLAY], { env: { PATH: process.env.PATH, DISPLAY: display.display } });
-      if (display.warnings.some((w) => w.includes("XAUTHORITY"))) expect(sameUser.status).not.toBe(0);
-      else expect(sameUser.status).toBe(0);
+      expect(sameUser.status).toBe(0);
+      expect(display.warnings).toEqual([]);
       // With a wrong cookie and as another user (no localuser grant applies), it is refused.
       const bad = join(mkdtempSync(join(tmpdir(), "clipy-badauth-")), "Xauthority");
       execFileSync("xauth", ["-q", "-f", bad, "add", display.display, "MIT-MAGIC-COOKIE-1", "0".repeat(32)]);
