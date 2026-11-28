@@ -99,8 +99,22 @@ const storedTranscriptionSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.enum(KEYED_TRANSCRIPTION_KINDS), apiKey: nonEmpty, model: nonEmpty.optional() }),
 ]);
 
+const NEWER_VERSION_MESSAGE = "was saved by a newer version of Clipy Local; update Clipy Local to use this file";
+
+const configVersionSchema = z
+  .unknown()
+  .optional()
+  .superRefine((value, ctx) => {
+    if (value === undefined || value === 1) return;
+    if (typeof value === "number" && Number.isFinite(value) && value > 1) {
+      ctx.addIssue({ code: "custom", message: NEWER_VERSION_MESSAGE });
+      return;
+    }
+    ctx.addIssue({ code: "custom", message: "expected 1" });
+  }) as z.ZodType<1 | undefined>;
+
 export const storedConfigSchema = z.looseObject({
-  version: z.literal(1).optional(),
+  version: configVersionSchema,
   model: storedModelSchema.nullable().optional(),
   transcription: storedTranscriptionSchema.optional(),
 });
@@ -110,7 +124,8 @@ export const storedConfigSchema = z.looseObject({
  * input value, so a key in the file cannot end up in the message.
  */
 export function describeIssues(error: z.ZodError): string {
-  return error.issues
+  const issues = [...error.issues].sort((a, b) => Number(b.message === NEWER_VERSION_MESSAGE) - Number(a.message === NEWER_VERSION_MESSAGE));
+  return issues
     .slice(0, 5)
     .map((issue) => {
       const path = issue.path.map(String);

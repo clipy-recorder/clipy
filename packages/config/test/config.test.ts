@@ -307,4 +307,24 @@ describe("a malformed file", () => {
     expect(errorOf(() => saveConfig({ transcription: { kind: "none" } }, env)).message).toMatch(/not valid JSON/);
     expect(readFileSync(file, "utf8")).toBe("{ broken");
   });
+
+  it("explains when the file was saved by a newer Clipy Local and refuses to overwrite it", () => {
+    const newer = { version: 2, model: { preset: "openai", apiKey: "sk-secret-123" }, futureSetting: true };
+    writeConfig(newer);
+    const before = readFileSync(file, "utf8");
+    const loadErr = errorOf(() => loadConfig(env));
+    expect(loadErr.message).toContain(file);
+    expect(loadErr.message).toMatch(/newer version/i);
+    expect(loadErr.message).toMatch(/update Clipy Local/i);
+    expect(loadErr.message).not.toContain("sk-secret-123");
+    const saveErr = errorOf(() => saveConfig({ transcription: { kind: "none" } }, env));
+    expect(saveErr.message).toContain(file);
+    expect(saveErr.message).toMatch(/newer version/i);
+    expect(readFileSync(file, "utf8")).toBe(before);
+  });
+
+  it("rejects non-newer invalid version values as expected 1", () => {
+    writeConfig({ version: 0 });
+    expect(errorOf(() => loadConfig(env)).message).toMatch(/"version": expected 1/);
+  });
 });
