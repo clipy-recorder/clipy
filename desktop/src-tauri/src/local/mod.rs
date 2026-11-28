@@ -185,6 +185,9 @@ pub(crate) const AGENT_DETAILS: &str = "agent-details.json";
 /// the AREC path from `stop`, so a finished take neither overwrites the
 /// user's clipboard nor opens the viewer window over what they are doing.
 pub(crate) const AGENT_TAKE: &str = "agent-take";
+/// Present when the talk key started the take. Like an agent's take, the
+/// path is handed over by the paste, not the clipboard copy or the viewer.
+pub(crate) const TALK_TAKE: &str = "talk-take";
 /// Keeps a note apart from recognized speech in the transcript.
 const NARRATION_PREFIX: &str = "Narration: ";
 /// A note's transcript segment runs until the next note, at most this long.
@@ -540,8 +543,44 @@ pub(crate) fn is_agent_take(dir: &Path) -> bool {
     dir.join(AGENT_TAKE).exists()
 }
 
+/// Marks a take started with the talk key, which pastes its own words and
+/// AREC path. Best effort for the caller: without the marker the take only
+/// behaves like one the user started.
+pub(crate) fn mark_talk_take(dir: &Path) -> Result<()> {
+    std::fs::write(dir.join(TALK_TAKE), b"")?;
+    Ok(())
+}
+
+pub(crate) fn is_talk_take(dir: &Path) -> bool {
+    dir.join(TALK_TAKE).exists()
+}
+
+/// Whether something other than the clipboard copy hands this take over (an
+/// agent's `stop`, or the talk key's paste), so a finished take neither
+/// overwrites the clipboard nor opens the viewer over what the user is doing.
+pub(crate) fn is_handed_off(dir: &Path) -> bool {
+    is_agent_take(dir) || is_talk_take(dir)
+}
+
+/// What was said in a take, as one line of text, or `None` when nothing was
+/// heard yet. Narration notes are left out: they are not the user's words.
+pub(crate) fn transcript_words(dir: &Path) -> Option<String> {
+    let transcript = read_transcript(dir).ok()?;
+    let words = transcript
+        .segments
+        .iter()
+        .filter_map(|segment| segment["text"].as_str())
+        .filter(|text| !text.starts_with(NARRATION_PREFIX))
+        .flat_map(str::split_whitespace)
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!words.is_empty()).then_some(words)
+}
+
 /// The `ready` line of an agent's take, whose path went back to the agent.
 const AGENT_READY_MESSAGE: &str = "Local AREC is ready for the agent that recorded it";
+/// The `ready` line of a talk-key take, whose path was pasted at Stop.
+const TALK_READY_MESSAGE: &str = "Local AREC is ready; its path was pasted where you were typing";
 
 /// The `ready` line the panel and the menu bar read out. It names the
 /// clipboard only when the path is on it; the fallback names the folder,
@@ -1044,7 +1083,9 @@ fn process<R: Runtime>(
         // Copy first so the announcement can report what actually happened,
         // and announce before the window opens so the viewer's first read of
         // status.json already says "ready".
-        if is_agent_take(dir) {
+        if is_talk_take(dir) {
+            write_status(app, dir, "ready", TALK_READY_MESSAGE, false)?;
+        } else if is_agent_take(dir) {
             write_status(app, dir, "ready", AGENT_READY_MESSAGE, false)?;
         } else {
             let copied = copy_arec_path(app, dir);

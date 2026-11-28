@@ -1426,6 +1426,29 @@ export function setRecorderShortcut(action: RecorderShortcutAction, hotkey: stri
   return invoke<void>("set_recorder_shortcut", { action, hotkey });
 }
 
+// ─── Talk to your agent ─────────────────────────────────────────────────────
+
+export type TalkKey = "off" | "fn" | "right_option";
+export type TalkPaste = "words_and_path" | "path" | "words";
+/** What macOS does on a Fn press; anything but "nothing" opens over a Fn take. */
+export type FnUsage = "nothing" | "input_source" | "emoji" | "dictation";
+
+export interface TalkSettingsDto {
+  /** False where talk is not built yet (everything but macOS). */
+  supported: boolean;
+  key: TalkKey;
+  paste: TalkPaste;
+  fnUsage: FnUsage | null;
+}
+
+export function getTalkSettings(): Promise<TalkSettingsDto> {
+  return invoke<TalkSettingsDto>("get_talk_settings");
+}
+
+export function setTalkSettings(change: { key?: TalkKey; paste?: TalkPaste }): Promise<void> {
+  return invoke<void>("set_talk_settings", { key: change.key ?? null, paste: change.paste ?? null });
+}
+
 // ─── Clipboard history ───────────────────────────────────────────────────────
 
 export interface ClipImageDto {

@@ -279,7 +279,7 @@ fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 /// The window that had focus before the picker opened, so the chosen item
 /// goes back to it.
 #[derive(Clone, Copy)]
-enum PasteTarget {
+pub(crate) enum PasteTarget {
     #[cfg(target_os = "macos")]
     Pid(i32),
     #[cfg(target_os = "windows")]
@@ -1443,6 +1443,47 @@ fn return_focus(app: &AppHandle) -> bool {
         Some(window) => window.set_focus().is_ok(),
         None => activated,
     }
+}
+
+/// The app the user is typing in now, so something can be pasted into it
+/// later (Talk to your agent reads this when the take starts).
+pub(crate) fn frontmost_target() -> Option<PasteTarget> {
+    platform::current_target()
+}
+
+/// Puts `text` on the clipboard and presses ⌘V / Ctrl+V in `target`, or in
+/// whatever is frontmost when there is none. False when the text is only on
+/// the clipboard: no Accessibility permission, or the app could not be
+/// brought back.
+pub(crate) async fn paste_text_into(app: &AppHandle, text: &str, target: Option<PasteTarget>) -> bool {
+    if let Err(err) = app.clipboard().write_text(text.to_string()) {
+        tracing::warn!("paste text could not reach the clipboard: {err:#}");
+        return false;
+    }
+    if !platform::can_paste() {
+        return false;
+    }
+    if let Some(target) = target {
+        if !platform::is_frontmost(target) {
+            if !platform::activate(target) {
+                return false;
+            }
+            // Activation is asynchronous; a keystroke sent before the other
+            // app is frontmost lands nowhere.
+            for _ in 0..50 {
+                if platform::is_frontmost(target) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            if !platform::is_frontmost(target) {
+                return false;
+            }
+        }
+    }
+    // A beat for the app to make its text field key again.
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    platform::post_paste()
 }
 
 /// Esc: close without pasting, back in the app the user was typing in.

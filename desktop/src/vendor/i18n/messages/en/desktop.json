@@ -41,7 +41,12 @@
       "recoveryMany": "{count} unfinished recordings are still saved on this computer. Open Clipy to upload or discard them.",
       "clipboardCopiedOnly": "Copied. Clipy couldn't paste it for you, so press {key}.",
       "linkCopied": "Video link ready and copied to your clipboard.",
-      "linkReady": "Your video link is ready."
+      "linkReady": "Your video link is ready.",
+      "talkTitle": "Talk to your agent",
+      "talkStartFailed": "Clipy could not start recording: {reason}",
+      "talkStopFailed": "Clipy could not finish this recording. It is kept in Local recordings.",
+      "talkNoWords": "No speech was heard, so nothing was pasted. The recording is kept in Local recordings.",
+      "talkCopiedOnly": "Copied. Press ⌘V to paste. Turn on Clipy in System Settings, Privacy & Security, Accessibility to paste automatically."
     },
     "windowTitles": {
       "whatsNew": "What's new in Clipy",
@@ -265,6 +270,33 @@
       "title": "Language",
       "subtitle": "Menus, windows and notifications. System default follows your {os} language.",
       "label": "Language"
+    },
+    "talk": {
+      "title": "Talk to your agent",
+      "intro": "Hold the key, talk and point (hold Control to highlight), then let go. Clipy pastes what you said and the recording's AREC path where you were typing, ready for any AI agent that can read files on this Mac, like Claude, Codex or Cursor. Double-tap the key to talk hands-free and tap it again to finish. Esc throws the take away.",
+      "key": {
+        "title": "Talk key",
+        "subtitle": "Records your screen and microphone while it is held. Recordings stay on this Mac.",
+        "options": {
+          "off": "Off",
+          "fn": "Fn (🌐)",
+          "right_option": "Right Option"
+        }
+      },
+      "fnClash": "macOS also uses the Fn key, so its emoji picker or dictation would open on top. Open System Settings, Keyboard, and set \"Press 🌐 key to\" to Do Nothing.",
+      "paste": {
+        "title": "Paste",
+        "options": {
+          "words_and_path": "Words and recording",
+          "path": "Recording only",
+          "words": "Words only"
+        },
+        "hints": {
+          "words_and_path": "What you said, then the AREC path. Your agent reads the screen, what you pointed at and the transcript from it.",
+          "path": "Only the AREC path.",
+          "words": "Only what you said, like dictation. The recording is still kept in Local recordings."
+        }
+      }
     }
   },
   "ui": {

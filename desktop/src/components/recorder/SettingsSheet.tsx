@@ -32,6 +32,7 @@ import { LocalPreferences } from "../../edition-local/LocalPreferences";
 import { CameraLookRows } from "./CameraLookRows";
 import { CameraViewRows } from "./CameraViewRows";
 import { ShortcutsEditor } from "./ShortcutsEditor";
+import { TalkSettings } from "./TalkSettings";
 import { WindowCaptureChoice } from "./WindowCaptureChoice";
 import { Icon, InlineSelect, PrimaryButton, ScreenHeader, SectionTitle, SettingRow, Switch, Tabs } from "./ui";
 
@@ -501,6 +502,7 @@ export function SettingsSheet(p: SettingsSheetProps) {
             <SectionTitle>{t("sections.shortcuts")}</SectionTitle>
             <p className="px-5 pb-1 text-[12px] leading-snug text-ink-secondary">{t("shortcutsHint")}</p>
             <ShortcutsEditor stopHotkey={p.hotkey} onStopHotkeyChange={p.onHotkeyChange} onChange={onShortcutsChange} />
+            <TalkSettings />
 
             <SectionTitle>{t("sections.recordingsOnDevice", { device: deviceName })}</SectionTitle>
             <div className="flex gap-3 px-5 pb-2">

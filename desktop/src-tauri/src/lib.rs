@@ -95,6 +95,9 @@ mod zoom_segments;
 // Flare outside a recording: hold Control+Shift, or "Show Pointer" in the
 // tray menu, to point at something on a shared screen.
 mod pointer;
+// Talk to your agent: hold a key, talk and point, let go, and the words and
+// the Local AREC path are pasted where you were typing.
+mod talk;
 
 // Agent bridge — local AI agents (Claude Code via @clipy/cli) trigger real
 // recordings through a Unix-socket control surface. See agent_bridge.rs for
@@ -253,6 +256,8 @@ pub fn run() {
             clipboard_history::clear_clipboard_history,
             clipboard_history::hide_clipboard_history,
             clipboard_history::get_clipboard_history_enabled,
+            talk::get_talk_settings,
+            talk::set_talk_settings,
             clipboard_history::get_clipboard_key_clash,
             clipboard_history::set_clipboard_history_enabled,
             notes_window::hide_notes_window,
@@ -473,6 +478,7 @@ pub fn run() {
             clipboard_history::init(app.handle());
             whats_new::init(app.handle());
             pointer::init(app.handle());
+            talk::init(app.handle());
             recorder_actions::init(app.handle(), &saved_hotkey);
 
             // Register clipy:// with the OS at runtime.

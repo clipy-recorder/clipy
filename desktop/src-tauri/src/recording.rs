@@ -1240,8 +1240,9 @@ impl RecordingController {
             }
             self.set_phase(app, RecordingPhase::Idle, None);
             result?;
-            // An agent's take goes back to the agent through `stop`.
-            if !crate::local::is_agent_take(dir) {
+            // An agent's take goes back to the agent through `stop`, and a
+            // talk-key take is pasted by `talk.rs`.
+            if !crate::local::is_handed_off(dir) {
                 use tauri_plugin_clipboard_manager::ClipboardExt;
                 let arec = metadata.file_path.with_file_name("recording.arec");
                 if let Err(err) = app.clipboard().write_text(arec.to_string_lossy().into_owned()) {
