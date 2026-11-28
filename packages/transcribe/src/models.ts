@@ -154,7 +154,16 @@ export function modelStatus(model: LocalModelId, modelDir?: string): { installed
   return { installed, dir };
 }
 
+
 export function formatBytes(n: number): string {
+  if (n < 1_000_000) {
+    return `${Math.round(n / 1_000)} KB`;
+  }
+
+  if (n >= 1_000_000_000) {
+    return `${(n / 1_000_000_000).toFixed(1)} GB`;
+  }
+
   return `${Math.round(n / 1_000_000)} MB`;
 }
 
