@@ -36,11 +36,10 @@ export const realRunner: Runner = (cmd, args, env = process.env) =>
 
 /** Look a program up on PATH (and PATHEXT on Windows) without spawning it. */
 export function findExecutable(name: string, platform: Platform = currentPlatform(), env: NodeJS.ProcessEnv = process.env): string | null {
-  if (name.includes("/") || (platform === "win32" && name.includes("\\"))) return isExecutable(name, platform) ? name : null;
-  const path = env.PATH ?? env.Path ?? "";
+  if (name.includes("/") || name.includes("\\")) return isExecutable(name, platform) ? name : null;
   const sep = platform === "win32" ? ";" : delimiter;
   const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean) : [""];
-  for (const dir of path.split(sep)) {
+  for (const dir of (env.PATH ?? "").split(sep)) {
     if (!dir) continue;
     for (const ext of exts) {
       const candidate = join(dir, name + (platform === "win32" && !name.toLowerCase().endsWith(ext.toLowerCase()) ? ext : ""));
