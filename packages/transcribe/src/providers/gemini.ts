@@ -36,9 +36,13 @@ const RESPONSE_SCHEMA = {
 /** Seconds as a number, or "SS", "MM:SS", "HH:MM:SS(.ms)" strings the model sometimes writes. */
 const Seconds = z.preprocess((v) => {
   if (typeof v !== "string") return v;
-  const parts = v.trim().replace(/s$/, "").split(":").map(Number);
-  if (parts.length === 0 || parts.length > 3 || parts.some((p) => !Number.isFinite(p))) return v;
-  return parts.reduce((acc, p) => acc * 60 + p, 0);
+  // Match the Rust port: each colon-separated part must be a non-blank number,
+  // so "", "1:", ":30" and " : " are rejected rather than read as 0.
+  const parts = v.trim().replace(/s$/, "").split(":");
+  if (parts.length > 3 || parts.some((p) => p.trim() === "")) return v;
+  const nums = parts.map(Number);
+  if (nums.some((p) => !Number.isFinite(p))) return v;
+  return nums.reduce((acc, p) => acc * 60 + p, 0);
 }, z.number().finite().nonnegative());
 
 export const GeminiTranscript = z.object({
