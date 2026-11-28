@@ -107,9 +107,9 @@ function formatMegabytes(bytes: number): string {
 const FIELD =
   "w-full rounded-xl bg-row px-3 py-2 text-[14px] text-ink-text placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-flash-500/50";
 const SMALL_BUTTON =
-  "rounded-lg bg-row px-2.5 py-1 text-[12px] font-medium text-ink-text hover:bg-row-hover disabled:opacity-50";
+  "rounded-lg bg-row px-2.5 py-1 text-[12px] font-medium text-ink-text hover:bg-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50";
 const SAVE_BUTTON =
-  "rounded-lg bg-flash-500 px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-flash-600 disabled:opacity-50";
+  "rounded-lg bg-flash-500 px-3 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-flash-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50";
 
 /** A key field that never shows a stored key: "Saved" plus Replace and Remove. */
 function KeyField({
@@ -129,6 +129,22 @@ function KeyField({
   onReplace: (replacing: boolean) => void;
   optional?: boolean;
 }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const replaceRef = useRef<HTMLButtonElement | null>(null);
+  const pendingFocus = useRef<"input" | "replace" | null>(null);
+
+  useEffect(() => {
+    const target = pendingFocus.current;
+    if (!target) return;
+    if (target === "input" && replacing) {
+      pendingFocus.current = null;
+      inputRef.current?.focus();
+    } else if (target === "replace" && !replacing) {
+      pendingFocus.current = null;
+      replaceRef.current?.focus();
+    }
+  }, [replacing]);
+
   if (hasKey && !replacing) {
     return (
       <div className="flex items-center gap-2">
@@ -136,7 +152,16 @@ function KeyField({
           <Icon name="check" size={14} className="shrink-0 text-status-ok" />
           {`${label} saved`}
         </span>
-        <button type="button" className={SMALL_BUTTON} onClick={() => onReplace(true)}>
+        <button
+          ref={replaceRef}
+          type="button"
+          aria-label={`Replace ${label}`}
+          className={SMALL_BUTTON}
+          onClick={() => {
+            pendingFocus.current = "input";
+            onReplace(true);
+          }}
+        >
           Replace
         </button>
       </div>
@@ -145,6 +170,7 @@ function KeyField({
   return (
     <div className="space-y-1.5">
       <input
+        ref={inputRef}
         type="password"
         autoComplete="off"
         spellCheck={false}
@@ -156,7 +182,16 @@ function KeyField({
       />
       {hasKey && (
         <div className="flex items-center gap-3 text-[12px]">
-          <button type="button" className="font-medium text-sheet-link hover:underline" onClick={() => { onDraft(""); onReplace(false); }}>
+          <button
+            type="button"
+            aria-label={`Keep saved ${label}`}
+            className="rounded font-medium text-sheet-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500"
+            onClick={() => {
+              pendingFocus.current = "replace";
+              onDraft("");
+              onReplace(false);
+            }}
+          >
             Keep the saved key
           </button>
           <span className="text-ink-secondary">Leave empty and save to remove it.</span>
@@ -249,7 +284,7 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
           <input
             type="text"
             spellCheck={false}
-            aria-label="Model"
+            aria-label="Moment selection model"
             placeholder={info.defaultModel ? `Model (default ${info.defaultModel})` : "Model name"}
             value={model}
             onChange={(event) => setModel(event.target.value)}
@@ -260,7 +295,7 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
           <input
             type="url"
             spellCheck={false}
-            aria-label="Base URL"
+            aria-label="Moment selection base URL"
             placeholder={info.defaultUrl ? `Base URL (default ${info.defaultUrl})` : "Base URL, for example http://127.0.0.1:8080/v1"}
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
@@ -273,7 +308,7 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
               {message.text}
             </span>
           )}
-          <button type="button" className={SAVE_BUTTON} disabled={saving} onClick={() => void save()}>
+          <button type="button" aria-label="Save moment selection" className={SAVE_BUTTON} disabled={saving} onClick={() => void save()}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -305,10 +340,18 @@ function ModelDownload({
     const total = progress?.totalBytes || status.sizeBytes;
     const received = progress?.receivedBytes ?? 0;
     const ratio = total > 0 ? Math.min(1, received / total) : 0;
+    const percent = Math.round(ratio * 100);
     return (
-      <div className="space-y-1.5" role="status">
-        <div className="h-1.5 overflow-hidden rounded-full bg-row">
-          <div className="h-full rounded-full bg-flash-500 transition-[width]" style={{ width: `${Math.round(ratio * 100)}%` }} />
+      <div className="space-y-1.5" role="status" aria-live="polite">
+        <div
+          role="progressbar"
+          aria-label="Speech model download progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          className="h-1.5 overflow-hidden rounded-full bg-row"
+        >
+          <div className="h-full rounded-full bg-flash-500 transition-[width]" style={{ width: `${percent}%` }} />
         </div>
         <p className="text-[12px] text-ink-secondary">
           {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatMegabytes(received)} of ${formatMegabytes(total)}`}
@@ -321,7 +364,7 @@ function ModelDownload({
       <span className="min-w-0 flex-1 text-[13px] text-ink-secondary">
         {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatMegabytes(status.sizeBytes)}).`}
       </span>
-      <button type="button" className={SAVE_BUTTON} onClick={onDownload}>
+      <button type="button" aria-label="Download speech model" className={SAVE_BUTTON} onClick={onDownload}>
         Download
       </button>
     </div>
@@ -469,7 +512,7 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
               {message.text}
             </span>
           )}
-          <button type="button" className={SAVE_BUTTON} disabled={saving || !dirty} onClick={() => void save()}>
+          <button type="button" aria-label="Save transcription settings" className={SAVE_BUTTON} disabled={saving || !dirty} onClick={() => void save()}>
             {saving ? "Saving…" : "Save"}
           </button>
         </div>
@@ -480,7 +523,11 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
 
 function LinkRow({ label, hint, onClick }: { label: string; hint: string; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 border-b border-subtle px-5 py-3 text-left hover:bg-row">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 border-b border-subtle px-5 py-3 text-left hover:bg-row focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-flash-500"
+    >
       <span className="min-w-0 flex-1">
         <span className="block text-[15px] font-semibold text-ink-text">{label}</span>
         <span className="block text-[12px] text-ink-secondary">{hint}</span>
@@ -520,7 +567,9 @@ export function LocalPreferences({ version, onWhatsNew }: { version: string | nu
           <TranscriptionSection settings={settings} onSaved={setSettings} />
         </>
       ) : (
-        <p className="px-5 py-3 text-[12px] text-ink-secondary">{loadError ?? "Loading settings…"}</p>
+        <p role={loadError ? "alert" : "status"} className="px-5 py-3 text-[12px] text-ink-secondary">
+          {loadError ?? "Loading settings…"}
+        </p>
       )}
       <div className="px-5 pt-3">
         <Notice tone="info">
@@ -535,7 +584,11 @@ export function LocalPreferences({ version, onWhatsNew }: { version: string | nu
       <p className="px-5 pt-3 text-[12px] leading-snug text-ink-secondary">
         {/* The full app's name is a value, so the local edition's brand swap leaves it as Clipy. */}
         {t("local.fullApp.pitch", { fullApp: "Clipy" })}{" "}
-        <button type="button" className="font-medium text-sheet-link hover:underline" onClick={() => openUrl(FULL_CLIPY_URL)}>
+        <button
+          type="button"
+          className="rounded-sm font-medium text-sheet-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flash-500"
+          onClick={() => openUrl(FULL_CLIPY_URL)}
+        >
           {t("local.fullApp.button", { fullApp: "Clipy" })}
         </button>
       </p>
