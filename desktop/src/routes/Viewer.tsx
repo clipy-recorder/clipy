@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useTranslations } from "use-intl";
 import { ClipyWordmark } from "../components/ClipyWordmark";
 import { groupTranscriptLines } from "../lib/transcriptLines";
@@ -43,10 +43,21 @@ export default function Viewer() {
   const [copied, setCopied] = useState(false);
   const [autoOpen, setAutoOpen] = useState<"on" | "turningOff" | "off" | "dismissed">("on");
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const transcriptContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeLineRef = useRef<HTMLButtonElement | null>(null);
+  const pauseAutoScrollUntilRef = useRef<number>(0);
+
+  const PAUSE_DURATION_MS = 3500;
+
+  const handleUserScrollIntent = useCallback(() => {
+    pauseAutoScrollUntilRef.current = Date.now() + PAUSE_DURATION_MS;
+  }, []);
+
   // Apple's on-device recognizer hands back one segment per word, so the raw
   // list reads as a column of single words. Fold them into lines for display;
   // the AREC on disk keeps every word.
   const lines = useMemo(() => groupTranscriptLines(recording?.segments ?? []), [recording?.segments]);
+  const activeLine = useMemo(() => lines.findIndex((line) => position >= line.startMs && position < line.endMs), [lines, position]);
 
   useEffect(() => {
     let disposed = false;
@@ -67,6 +78,37 @@ export default function Viewer() {
       disposed = true;
     };
   }, [id]);
+
+  // Reset auto-scroll cooldown when switching recordings.
+  useEffect(() => {
+    pauseAutoScrollUntilRef.current = 0;
+  }, [id]);
+
+  // Auto-scroll the active transcript line into view during playback.
+  useEffect(() => {
+    if (activeLine < 0) return;
+    if (Date.now() < pauseAutoScrollUntilRef.current) return;
+
+    const container = transcriptContainerRef.current;
+    const activeEl = activeLineRef.current;
+    if (!container || !activeEl) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const lineRect = activeEl.getBoundingClientRect();
+    const isOutOfView =
+      lineRect.top < containerRect.top || lineRect.bottom > containerRect.bottom;
+
+    if (!isOutOfView) return;
+
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    activeEl.scrollIntoView({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "nearest",
+    });
+  }, [activeLine]);
 
   const seek = (ms: number) => {
     const video = videoRef.current;
@@ -106,8 +148,6 @@ export default function Viewer() {
   if (!recording) {
     return <main className="h-screen bg-surface" />;
   }
-
-  const activeLine = lines.findIndex((line) => position >= line.startMs && position < line.endMs);
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-surface text-ink-text">
@@ -178,7 +218,18 @@ export default function Viewer() {
           />
         </section>
 
-        <aside className="flex w-[380px] shrink-0 flex-col overflow-y-auto border-l border-subtle">
+        <aside
+          ref={transcriptContainerRef}
+          onWheel={handleUserScrollIntent}
+          onTouchMove={handleUserScrollIntent}
+          onPointerDown={handleUserScrollIntent}
+          onKeyDown={(e) => {
+            if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) {
+              handleUserScrollIntent();
+            }
+          }}
+          className="flex w-[380px] shrink-0 flex-col overflow-y-auto border-l border-subtle"
+        >
           {recording.frames.length > 0 && (
             <div className="border-b border-subtle px-5 py-4">
               <h2 className="pb-3 text-[13px] font-bold uppercase tracking-wide text-ink-secondary">{t("keyMoments")}</h2>
@@ -210,6 +261,7 @@ export default function Viewer() {
                 {lines.map((line, index) => (
                   <button
                     key={`${line.startMs}-${index}`}
+                    ref={index === activeLine ? activeLineRef : undefined}
                     type="button"
                     onClick={() => seek(line.startMs)}
                     className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
