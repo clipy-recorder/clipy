@@ -78,7 +78,10 @@ pnpm test
 The capture package's real-recording tests run only on Linux with Xvfb and an
 ffmpeg that has x11grab and libx264 (`sudo apt-get install ffmpeg xvfb xauth
 libxtst6`); elsewhere they are skipped and the rest of the suite still runs.
-The other packages run anywhere.
+The transcription tests that generate or process media also need ffmpeg. They
+skip when it is unavailable; pure and stub-server tests still run. Set
+`CLIPY_FFMPEG` to the full path of a custom ffmpeg executable to use it for
+both test fixtures and transcription. The other package tests run anywhere.
 
 `packages/moments/src/generated/` is generated from the code the hosted
 Clipy uses, so both pick moments the same way. Propose changes to it in a

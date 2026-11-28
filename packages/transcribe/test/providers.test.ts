@@ -10,7 +10,7 @@ import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
-import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
+import { ffmpeg, hasFfmpeg, audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
 const SECRET_TEXT = "the-secret-transcript-words";
@@ -109,11 +109,11 @@ describe("openai-compatible", () => {
     await expectSafeError(transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }), "openai-compatible", 401);
   });
 
-  it("works end to end through transcribe() from a media file", async () => {
+  it.runIf(hasFfmpeg)("works end to end through transcribe() from a media file", async () => {
     server = await fakeServer((_req, res) => json(res, { language: "en", segments: [{ start: 0, end: 1, text: "ok" }] }));
     const dir = tempDir();
     const media = join(dir, "tone.m4a");
-    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=duration=2", "-c:a", "aac", media]);
+    execFileSync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "sine=duration=2", "-c:a", "aac", media]);
     const stages = new Set<string>();
     const r = await transcribe(media, { kind: "openai-compatible", baseUrl: server.url, apiKey: KEY, model: "whisper-large-v3-turbo" }, { onProgress: (p) => stages.add(p.stage) });
     expect(r).toEqual({ segments: [{ startMs: 0, endMs: 1000, text: "ok" }], engine: "openai-compatible:whisper-large-v3-turbo", language: "en", gaps: [] });
