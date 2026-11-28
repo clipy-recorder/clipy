@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+﻿import { spawn } from "node:child_process";
 import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseSilencedetectOutput, type SilenceSpan } from "./chunking.js";
@@ -164,6 +164,16 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
       const len = head.readUInt32LE(pos + 4);
       const body = pos + 8;
       if (id === "fmt ") {
+        const audioFormat = head.readUInt16LE(body);
+        // 1 = PCM, 65534 = WAVE_FORMAT_EXTENSIBLE (a PCM container with extra metadata).
+        // All other format tags (3 = IEEE float, 6 = A-law, 7 = µ-law, etc.) are
+        // not supported: the pipeline expects 16-bit signed integer samples.
+        if (audioFormat !== 1 && audioFormat !== 65534) {
+          throw new Error(
+            `${path} uses an unsupported WAV encoding (format tag ${audioFormat}). ` +
+              "Only PCM (format tag 1) is accepted.",
+          );
+        }
         fmt = {
           channels: head.readUInt16LE(body + 2),
           sampleRate: head.readUInt32LE(body + 4),
