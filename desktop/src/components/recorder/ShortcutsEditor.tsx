@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { isRegistered } from "@tauri-apps/plugin-global-shortcut";
 import { useTranslations } from "use-intl";
 import {
   getRecorderShortcuts,
@@ -41,15 +42,20 @@ function hotkeyFromEvent(e: KeyboardEvent): string | null {
 export function ShortcutsEditor({
   stopHotkey,
   onStopHotkeyChange,
+  clipboardEnabled = true,
   onChange,
 }: {
   stopHotkey: string;
   onStopHotkeyChange: (hotkey: string) => Promise<void>;
+  /** Whether clipboard history is enabled (when false, its key is dormant, not clashed). */
+  clipboardEnabled?: boolean;
   /** Called with the fresh rows after any change. */
   onChange?: (rows: RecorderShortcutDto[]) => void;
 }) {
   const t = useTranslations("desktop.shortcuts");
+  const idPrefix = useId();
   const [rows, setRows] = useState<RecorderShortcutDto[]>([]);
+  const [stopRegistered, setStopRegistered] = useState(true);
   const [listening, setListening] = useState<RecorderShortcutAction | "stop" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,7 +68,25 @@ export function ShortcutsEditor({
       })
       .catch((err) => setError(String(err)));
   }, [onChange]);
-  useEffect(refresh, [refresh]);
+  useEffect(refresh, [refresh, clipboardEnabled]);
+
+  useEffect(() => {
+    if (!stopHotkey) {
+      setStopRegistered(true);
+      return;
+    }
+    let cancelled = false;
+    isRegistered(stopHotkey)
+      .then((ok) => {
+        if (!cancelled) setStopRegistered(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setStopRegistered(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stopHotkey]);
 
   const commit = useCallback(
     async (target: RecorderShortcutAction | "stop", hotkey: string) => {
@@ -106,68 +130,79 @@ export function ShortcutsEditor({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [listening, commit]);
 
-  const field = (target: RecorderShortcutAction | "stop", hotkey: string, clearable: boolean) => {
+  const field = (target: RecorderShortcutAction | "stop", hotkey: string, clearable: boolean, registered = true) => {
     const active = listening === target;
     const caps = keycaps(hotkey);
+    const unregistered = Boolean(hotkey) && !registered;
+    const warningId = `${idPrefix}-${target}-warning`;
     return (
-      <div
-        className={`flex h-11 w-full items-center gap-2 rounded-xl border bg-surface px-2.5 transition-colors ${
-          active ? "border-flash-500 ring-2 ring-flash-500/25" : "border-subtle"
-        }`}
-      >
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setListening(active ? null : target)}
-          aria-label={(() => {
-            const name = target === "stop" ? t("stopName") : t(`rows.${target}.label`);
-            return hotkey ? t("fieldLabelSet", { name, hotkey: formatHotkey(hotkey) }) : t("fieldLabel", { name });
-          })()}
-          className="flex h-full min-w-0 flex-1 items-center text-left"
+      <>
+        <div
+          className={`flex h-11 w-full items-center gap-2 rounded-xl border bg-surface px-2.5 transition-colors ${
+            active ? "border-flash-500 ring-2 ring-flash-500/25" : "border-subtle"
+          }`}
         >
-          {active ? (
-            <span className="text-[12px] text-ink-secondary">{t("pressKeys")}</span>
-          ) : caps.length === 0 ? (
-            <span className="text-[12px] text-ink-secondary">{t("clickToSet")}</span>
-          ) : (
-            <span className="flex items-center gap-1">
-              {caps.map((cap, i) => (
-                <kbd
-                  key={`${cap}-${i}`}
-                  className="inline-flex h-7 min-w-[26px] items-center justify-center whitespace-nowrap rounded-md border border-strong bg-row px-1.5 font-sans text-[12px] font-semibold text-ink-text"
-                >
-                  {cap}
-                </kbd>
-              ))}
-            </span>
-          )}
-        </button>
-        {clearable && hotkey && !active && (
           <button
             type="button"
             disabled={busy}
-            onClick={() => void commit(target as RecorderShortcutAction, "")}
-            aria-label={t("clearLabel")}
-            title={t("clear")}
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink-text text-canvas hover:bg-ink-text/80"
+            onClick={() => setListening(active ? null : target)}
+            aria-label={(() => {
+              const name = target === "stop" ? t("stopName") : t(`rows.${target}.label`);
+              return hotkey ? t("fieldLabelSet", { name, hotkey: formatHotkey(hotkey) }) : t("fieldLabel", { name });
+            })()}
+            aria-describedby={unregistered ? warningId : undefined}
+            className="flex h-full min-w-0 flex-1 items-center text-left"
           >
-            <Icon name="close" size={12} />
+            {active ? (
+              <span className="text-[12px] text-ink-secondary">{t("pressKeys")}</span>
+            ) : caps.length === 0 ? (
+              <span className="text-[12px] text-ink-secondary">{t("clickToSet")}</span>
+            ) : (
+              <span className="flex items-center gap-1">
+                {caps.map((cap, i) => (
+                  <kbd
+                    key={`${cap}-${i}`}
+                    className="inline-flex h-7 min-w-[26px] items-center justify-center whitespace-nowrap rounded-md border border-strong bg-row px-1.5 font-sans text-[12px] font-semibold text-ink-text"
+                  >
+                    {cap}
+                  </kbd>
+                ))}
+              </span>
+            )}
           </button>
+          {clearable && hotkey && !active && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void commit(target as RecorderShortcutAction, "")}
+              aria-label={t("clearLabel")}
+              title={t("clear")}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-ink-text text-canvas hover:bg-ink-text/80"
+            >
+              <Icon name="close" size={12} />
+            </button>
+          )}
+        </div>
+        {unregistered && (
+          <p id={warningId} className="mt-1 text-[12px] leading-snug text-flash-600">
+            {t("notRegistered")}
+          </p>
         )}
-      </div>
+      </>
     );
   };
 
   return (
     <div>
       <Row label={t("startStop")} hint={t("worksAnywhere")}>
-        {field("stop", stopHotkey, false)}
+        {field("stop", stopHotkey, false, stopRegistered)}
       </Row>
       {ROWS.map((action) => {
         const current = rows.find((r) => r.action === action);
+        const dormant = action === "clipboard_history" && !clipboardEnabled;
         return (
           <Row key={action} label={t(`rows.${action}.label`)} hint={t(`rows.${action}.hint`)}>
-            {field(action, current?.hotkey ?? "", true)}
+            {field(action, current?.hotkey ?? "", true, dormant ? true : (current?.registered ?? true))}
           </Row>
         );
       })}

@@ -394,7 +394,8 @@
     "clearLabel": "Clear shortcut",
     "clear": "Clear",
     "startStop": "Start / stop",
-    "worksAnywhere": "Works anywhere"
+    "worksAnywhere": "Works anywhere",
+    "notRegistered": "Another app or shortcut already uses this key."
   },
   "effects": {
     "title": "Effects",
