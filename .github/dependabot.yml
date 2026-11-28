@@ -1,0 +1,14 @@
+# Keeps the actions in .github/workflows current. Every action is pinned to a
+# full commit SHA with its version in a comment; Dependabot updates both, in
+# one grouped pull request a week. scripts/workflow-pins.test.mjs (run by
+# `pnpm test`) checks that the pins stay that way.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
