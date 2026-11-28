@@ -1,0 +1,244 @@
+# @clipy/transcribe
+
+Converts speech from audio and video recordings into timestamped text segments using local speech recognition models or external transcription services.
+
+## Requirements
+
+- Node.js 20.19 or later
+- pnpm
+- FFmpeg installed and available on PATH
+
+Check whether FFmpeg is installed:
+
+```bash
+ffmpeg -version
+```
+
+If FFmpeg is installed in a custom location, set the `CLIPY_FFMPEG` environment variable to its executable path.
+
+Example for Windows:
+
+```bat
+set CLIPY_FFMPEG=C:\ffmpeg\bin\ffmpeg.exe
+```
+
+## Supported transcription providers
+
+| Configuration kind | Provider |
+|---|---|
+| `none` | Transcription disabled |
+| `local` | On-device transcription |
+| `openai-compatible` | OpenAI-compatible API |
+| `deepgram` | Deepgram |
+| `assemblyai` | AssemblyAI |
+| `elevenlabs` | ElevenLabs |
+| `gemini` | Google Gemini |
+
+## Usage
+
+Import the public API:
+
+```typescript
+import {
+  transcribe,
+  downloadModel,
+  modelStatus
+} from "@clipy/transcribe";
+```
+
+### 1. Disable transcription
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "none"
+});
+```
+
+This disables transcription and returns a gap covering the recording duration when available.
+
+### 2. Local transcription
+
+Local transcription runs a downloaded speech model on the user's machine.
+
+```typescript
+await downloadModel("english-fast");
+
+const result = await transcribe("recording.mp4", {
+  kind: "local",
+  model: "english-fast"
+});
+
+console.log(result.segments);
+```
+
+### 3. OpenAI-compatible provider
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "openai-compatible",
+  baseUrl: "https://api.openai.com/v1",
+  apiKey: process.env.OPENAI_API_KEY!,
+  model: "whisper-1"
+});
+```
+
+### 4. Deepgram
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "deepgram",
+  apiKey: process.env.DEEPGRAM_API_KEY!
+});
+```
+
+### 5. AssemblyAI
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "assemblyai",
+  apiKey: process.env.ASSEMBLYAI_API_KEY!
+});
+```
+
+### 6. ElevenLabs
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "elevenlabs",
+  apiKey: process.env.ELEVENLABS_API_KEY!
+});
+```
+
+### 7. Google Gemini
+
+```typescript
+const result = await transcribe("recording.mp4", {
+  kind: "gemini",
+  apiKey: process.env.GEMINI_API_KEY!
+});
+```
+
+## Local models
+
+The package supports two local transcription models:
+
+| Model ID | Model | Download size |
+|---|---|---|
+| `english-fast` | NVIDIA Parakeet TDT-CTC 110M | Approximately 104 MB |
+| `multilingual` | Whisper Base | Approximately 161 MB |
+
+Local transcription uses `sherpa-onnx-node`, which must be provided by the host application.
+
+### Download and check model status
+
+```typescript
+for (const model of ["english-fast", "multilingual"] as const) {
+  const status = modelStatus(model);
+
+  if (!status.installed) {
+    await downloadModel(model);
+  }
+
+  console.log(modelStatus(model));
+}
+```
+
+`modelStatus()` returns:
+
+- `installed`: Whether the model is installed.
+- `dir`: The model directory path.
+
+`downloadModel()` downloads and verifies the model files using SHA-256 checksums. It returns the installed model directory.
+
+## Transcription configuration
+
+The `TranscriptionConfig` type supports:
+
+- `none`: Disables transcription.
+- `local`: Uses a downloaded local model.
+- `openai-compatible`: Uses an OpenAI-compatible endpoint.
+- `deepgram`: Uses the Deepgram service.
+- `assemblyai`: Uses AssemblyAI.
+- `elevenlabs`: Uses ElevenLabs.
+- `gemini`: Uses Google Gemini.
+
+The hosted provider configurations require an API key. The OpenAI-compatible configuration requires a base URL, API key and model name.
+
+## Transcription result
+
+The `transcribe()` function returns a result containing:
+
+- `segments`: Recognized text with start and end timestamps in milliseconds.
+- `engine`: The transcription engine used.
+- `language`: Language code when available.
+- `gaps`: Intervals without transcript coverage.
+
+Each transcript segment contains:
+
+- `startMs`: Start time in milliseconds.
+- `endMs`: End time in milliseconds.
+- `text`: Recognized speech.
+
+### Understanding gaps
+
+A gap represents a portion of the recording that has no transcript.
+
+Each gap contains:
+
+- `startMs`: Gap start time.
+- `endMs`: Gap end time.
+- `reason`: Explanation for the missing transcript.
+
+A gap does not necessarily mean silence.
+
+For example:
+- Transcription disabled can produce a gap covering the entire recording.
+- A recording without an audio track can also produce a full-recording gap.
+- Other gaps indicate portions without transcript coverage.
+
+## FFmpeg requirement
+
+FFmpeg is required to extract audio from video or audio files.
+
+The package converts audio into a standard format:
+
+- Sample rate: 16 kHz
+- Channels: Mono
+- Format: 16-bit PCM WAV
+
+By default, FFmpeg must be available on PATH.
+
+For a custom installation, configure `CLIPY_FFMPEG` with the full executable path.
+
+## Privacy
+
+The `none` and `local` configurations do not upload recording audio for transcription.
+
+The following configurations send audio to their configured external services:
+
+- OpenAI-compatible
+- Deepgram
+- AssemblyAI
+- ElevenLabs
+- Gemini
+
+Local model downloads require an internet connection, but the recording audio is processed on the local machine.
+
+Keep API keys secure. Use environment variables and never commit secret keys to the repository.
+
+## Additional options
+
+The `transcribe()` function accepts optional settings:
+
+- `signal`: Allows cancellation using an AbortSignal.
+- `modelDir`: Specifies a custom local model directory.
+- `onProgress`: Receives extraction, download and transcription progress.
+- `speechEngine`: Specifies the sherpa-onnx-node entry file for local transcription.
+
+## Source files
+
+- `src/index.ts` – Public transcription API.
+- `src/types.ts` – Configuration and result types.
+- `src/models.ts` – Local model management.
+- `src/audio.ts` – Audio extraction and processing.
+-
