@@ -191,8 +191,11 @@ export async function readWavInfo(path: string): Promise<WavInfo> {
   }
 }
 
-/** A complete 16 kHz mono WAV file holding the given PCM bytes. */
-export function wavFromPcm(pcm: Buffer, sampleRate = SAMPLE_RATE): Buffer {
+/** A complete WAV file holding the given PCM bytes. Defaults to 16 kHz mono 16-bit. */
+export function wavFromPcm(pcm: Buffer, sampleRate = SAMPLE_RATE, channels = 1, bitsPerSample = 16): Buffer {
+  const bytesPerSample = bitsPerSample / 8;
+  const blockAlign = channels * bytesPerSample;
+  const byteRate = sampleRate * blockAlign;
   const header = Buffer.alloc(44);
   header.write("RIFF", 0, "ascii");
   header.writeUInt32LE(36 + pcm.length, 4);
@@ -200,17 +203,17 @@ export function wavFromPcm(pcm: Buffer, sampleRate = SAMPLE_RATE): Buffer {
   header.write("fmt ", 12, "ascii");
   header.writeUInt32LE(16, 16);
   header.writeUInt16LE(1, 20); // PCM
-  header.writeUInt16LE(1, 22); // mono
+  header.writeUInt16LE(channels, 22);
   header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
   header.write("data", 36, "ascii");
   header.writeUInt32LE(pcm.length, 40);
   return Buffer.concat([header, pcm]);
 }
 
-/** Cut [startSec, startSec + durSec) out of a 16-bit mono WAV as its own WAV file in memory. */
+/** Cut [startSec, startSec + durSec) out of a WAV as its own WAV file in memory. */
 export async function readWavSlice(path: string, info: WavInfo, startSec: number, durSec: number): Promise<Buffer> {
   const frame = info.channels * (info.bitsPerSample / 8);
   const startByte = Math.min(info.dataBytes, Math.max(0, Math.round(startSec * info.sampleRate)) * frame);
@@ -223,7 +226,7 @@ export async function readWavSlice(path: string, info: WavInfo, startSec: number
   } finally {
     await fh.close();
   }
-  return wavFromPcm(pcm, info.sampleRate);
+  return wavFromPcm(pcm, info.sampleRate, info.channels, info.bitsPerSample);
 }
 
 /** ffmpeg silencedetect over the WAV. Best effort: any failure means "no silences found". */

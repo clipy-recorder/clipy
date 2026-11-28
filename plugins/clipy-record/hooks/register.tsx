@@ -161,8 +161,8 @@ async function findCli($: $, options: PluginOptions): Promise<Cli | null> {
         ...(platform === 'windows'
           ? [(args: string[]) => ['cmd', '/c', 'clipy', ...args], (args: string[]) => ['cmd', '/c', 'npx', '-y', '@clipy/cli@0.21.0', ...args]]
           : [
-              (args: string[]) => ['/bin/zsh', '-lc', `clipy ${quote(args)}`],
-              (args: string[]) => ['/bin/zsh', '-lc', `npx -y @clipy/cli@0.21.0 ${quote(args)}`],
+              (args: string[]) => [platform === 'darwin' ? '/bin/zsh' : (process.env.SHELL || '/bin/sh'), '-lc', `clipy ${quote(args)}`],
+              (args: string[]) => [platform === 'darwin' ? '/bin/zsh' : (process.env.SHELL || '/bin/sh'), '-lc', `npx -y @clipy/cli@0.21.0 ${quote(args)}`],
             ]),
       ]
   for (const wrap of candidates) {

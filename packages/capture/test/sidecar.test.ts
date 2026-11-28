@@ -62,6 +62,15 @@ describe("samplesToEvents", () => {
     ]);
   });
 
+  it("emits down at time 0 when button is pressed on the first sample", () => {
+    const events = samplesToEvents([s(0, 50, 50, 1), s(50, 50, 50, 0)], T0);
+    expect(events).toEqual([
+      { kind: "move", time_ms: 0, x: 50, y: 50 },
+      { kind: "down", time_ms: 0, x: 50, y: 50, button: 1 },
+      { kind: "up", time_ms: 50, x: 50, y: 50, button: 1 },
+    ]);
+  });
+
   it("drops samples after the end and sorts samples that arrived out of order", () => {
     const events = samplesToEvents([s(100, 3, 3), s(0, 1, 1), s(50, 2, 2), s(2000, 9, 9)], T0, T0 + 1000);
     expect(events.map((e) => e.time_ms)).toEqual([0, 50, 100]);
