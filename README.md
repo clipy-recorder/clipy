@@ -19,7 +19,9 @@
 	 |
 	<a href="CONTRIBUTING.md">Contribute</a>
 	 |
-	<a href="https://clipy.online">Website</a>
+        <a href="docs/architecture.md">Architecture guide</a>
+        |
+        <a href="https://clipy.online">Website</a>
 </p>
 
 <p align="center">
