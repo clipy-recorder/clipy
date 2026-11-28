@@ -218,8 +218,11 @@ The fastest way to run it is the CLI with `--local`:
 npm i -g @clipy/cli
 clipy models download english-fast          # on-device speech, one-time download
 clipy speech install                        # the engine that runs it (about 35 MB)
-clipy record --local --max 120              # press Enter or Ctrl-C to stop
+clipy record --local --mic --max 120        # press Enter or Ctrl-C to stop
 ```
+
+Use `--mic` to include your microphone for spoken transcription. Omit it for
+a recording without microphone audio.
 
 The last line prints the path of `recording.arec`. Give that path to your
 agent. `clipy context import demo.mov --local` does the same for a video file,
@@ -231,7 +234,7 @@ Clipy at a model you run yourself:
 ```bash
 export CLIPY_MODEL_PROVIDER=ollama          # or: lmstudio, custom
 export CLIPY_MODEL=<model you pulled>
-clipy record --local
+clipy record --local --mic
 ```
 
 Hosted providers work the same way (`openrouter`, `openai`, `gemini`, `groq`)
