@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { transcribe } from "../src/index.js";
 import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
@@ -364,6 +364,26 @@ describe("network failures", () => {
 });
 
 describe("timeouts", () => {
+  it("leaves no timer when the provider rejects an unfinished upload", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 401 }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const body = new Uint8Array(3 * 64 * 1024);
+      await expect(requestJson("deepgram", "http://provider.test", { method: "POST", body })).rejects.toMatchObject({ status: 401 });
+
+      // Fetch can still pull more slices and reach EOF after returning the response.
+      const upload = fetchMock.mock.calls[0][1]!.body as ReadableStream<Uint8Array>;
+      const reader = upload.getReader();
+      while (!(await reader.read()).done) {
+        expect(vi.getTimerCount()).toBe(0);
+      }
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      fetchMock.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("gives up on a provider that never answers after the upload, without the key", async () => {
     server = await fakeServer(() => new Promise(() => undefined));
     const err = await requestJson(
