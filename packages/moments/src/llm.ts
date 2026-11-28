@@ -138,7 +138,16 @@ export async function chatJSON<T = unknown>(opts: ChatOptions): Promise<{ parsed
       upstreamStatus: res.status,
     });
   }
-  const raw = await readCapped(res, MAX_COMPLETION_BYTES);
+  let raw: string;
+  try {
+    raw = await readCapped(res, MAX_COMPLETION_BYTES);
+  } catch (error) {
+    // Too large, cancelled and timed out keep their own classification.
+    const name = (error as Error).name;
+    if (error instanceof LLMError || opts.signal?.aborted || name === "AbortError" || name === "TimeoutError") throw error;
+    // The connection dropped mid-answer: fetch reports a bare TypeError, which the planner would not retry.
+    throw new LLMError({ message: "Model provider answer was cut off", transient: true, upstreamStatus: res.status });
+  }
   type Completion = { choices?: Array<{ message?: { content?: string | null } }> } | null;
   let body: Completion;
   try {
