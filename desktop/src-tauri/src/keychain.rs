@@ -43,19 +43,46 @@ pub fn clear(path: &Path) -> Result<()> {
 #[cfg(unix)]
 fn write_owner_only(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 
     let mut file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
-        .truncate(true)
         .mode(0o600)
         .open(path)?;
+
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.set_len(0)?;
     file.write_all(data)?;
+    file.sync_all()?;
+
     Ok(())
 }
 
 #[cfg(not(unix))]
 fn write_owner_only(path: &Path, data: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, data)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn save_restricts_permissions_of_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+
+        std::fs::write(&path, b"old data").unwrap();
+
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        save(&path, b"new data").unwrap();
+
+        let permissions = std::fs::metadata(&path).unwrap().permissions();
+
+        assert_eq!(permissions.mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read(&path).unwrap(), b"new data");
+    }
 }
