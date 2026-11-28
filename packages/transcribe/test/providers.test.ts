@@ -8,7 +8,7 @@ import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
-import { ProviderError, requestJson } from "../src/providers/http.js";
+import { joinUrl, ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
@@ -485,5 +485,27 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+
+describe("joinUrl", () => {
+  it("puts exactly one slash between the base URL and the path", () => {
+    expect(joinUrl("https://api.example.com", "v1/listen")).toBe("https://api.example.com/v1/listen");
+    expect(joinUrl("https://api.example.com/", "v1/listen")).toBe("https://api.example.com/v1/listen");
+    expect(joinUrl("https://api.example.com", "/v1/listen")).toBe("https://api.example.com/v1/listen");
+    expect(joinUrl("https://api.example.com/", "/v1/listen")).toBe("https://api.example.com/v1/listen");
+  });
+
+  it("drops repeated slashes at the join", () => {
+    expect(joinUrl("http://localhost:8000/v1///", "//audio/transcriptions")).toBe("http://localhost:8000/v1/audio/transcriptions");
+  });
+
+  it("keeps a path in the base URL", () => {
+    expect(joinUrl("https://proxy.example.com/openai/v1/", "audio/transcriptions")).toBe("https://proxy.example.com/openai/v1/audio/transcriptions");
+  });
+
+  it("leaves slashes inside the path alone", () => {
+    expect(joinUrl("https://api.example.com", "v2/transcript/abc")).toBe("https://api.example.com/v2/transcript/abc");
   });
 });
