@@ -222,7 +222,7 @@ clipy record --local --mic --max 120        # press Enter or Ctrl-C to stop
 ```
 
 Use `--mic` to include your microphone for spoken transcription. Omit it for
-a screen-only recording.
+a recording without microphone audio.
 
 The last line prints the path of `recording.arec`. Give that path to your
 agent. `clipy context import demo.mov --local` does the same for a video file,
