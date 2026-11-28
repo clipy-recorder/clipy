@@ -106,7 +106,12 @@ export function ShortcutsEditor({
     return () => window.removeEventListener("keydown", onKey, true);
   }, [listening, commit]);
 
-  const field = (target: RecorderShortcutAction | "stop", hotkey: string, clearable: boolean) => {
+  const field = (
+    target: RecorderShortcutAction | "stop",
+    hotkey: string,
+    clearable: boolean,
+    warningId?: string,
+  ) => {
     const active = listening === target;
     const caps = keycaps(hotkey);
     return (
@@ -119,6 +124,7 @@ export function ShortcutsEditor({
           type="button"
           disabled={busy}
           onClick={() => setListening(active ? null : target)}
+          aria-describedby={warningId}
           aria-label={(() => {
             const name = target === "stop" ? t("stopName") : t(`rows.${target}.label`);
             return hotkey ? t("fieldLabelSet", { name, hotkey: formatHotkey(hotkey) }) : t("fieldLabel", { name });
@@ -165,9 +171,18 @@ export function ShortcutsEditor({
       </Row>
       {ROWS.map((action) => {
         const current = rows.find((r) => r.action === action);
+        // A key is saved but the OS did not register it, usually because another app holds it.
+        const notWorking = !!current?.hotkey && !current.registered;
+        const warningId = notWorking ? `shortcut-warning-${action}` : undefined;
         return (
-          <Row key={action} label={t(`rows.${action}.label`)} hint={t(`rows.${action}.hint`)}>
-            {field(action, current?.hotkey ?? "", true)}
+          <Row
+            key={action}
+            label={t(`rows.${action}.label`)}
+            hint={t(`rows.${action}.hint`)}
+            warning={notWorking ? t("notWorking") : undefined}
+            warningId={warningId}
+          >
+            {field(action, current?.hotkey ?? "", true, warningId)}
           </Row>
         );
       })}
@@ -176,14 +191,35 @@ export function ShortcutsEditor({
   );
 }
 
-function Row({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
+function Row({
+  label,
+  hint,
+  warning,
+  warningId,
+  children,
+}: {
+  label: string;
+  hint: string;
+  /** Shown under the field when the key is set but the OS did not register it. */
+  warning?: string;
+  /** The field's `aria-describedby` points at this id. */
+  warningId?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex items-center gap-3 px-5 py-2">
       <div className="w-[96px] shrink-0">
         <div className="text-[14px] font-semibold leading-tight text-ink-text">{label}</div>
         <div className="text-[11px] leading-snug text-ink-secondary">{hint}</div>
       </div>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1">
+        {children}
+        {warning && (
+          <p id={warningId} className="mt-1 text-[11px] leading-snug text-flash-600">
+            {warning}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
