@@ -72,6 +72,24 @@ describe("openai-compatible", () => {
     expect(file.size).toBe(44 + 3 * 32000);
   });
 
+  it("clamps timestamps to the length of the audio piece", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        segments: [
+          { start: 0.5, end: 30, text: "tail" },
+          { start: -0.2, end: 1, text: "negative start" },
+          { start: 5, end: 8, text: "past the recording" },
+          { start: -3, end: -1, text: "before the recording" },
+        ],
+      }),
+    );
+    const r = await transcribeOpenAICompatible(await audioInput(4), { baseUrl: server.url, apiKey: KEY, model: "whisper-1" });
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 1000, text: "negative start" },
+      { startMs: 1000, endMs: 4000, text: "tail" },
+    ]);
+  });
+
   it("splits audio over the upload limit at silences and offsets each piece", async () => {
     const seen: number[] = [];
     server = await fakeServer(async (req, res) => {
@@ -122,6 +140,18 @@ describe("openai-compatible", () => {
 });
 
 describe("deepgram", () => {
+  it("clamps word timestamps to the recording length", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [{ alternatives: [{ words: [{ word: "hello", start: -0.2, end: 99 }] }] }],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(4), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 4000, text: "hello" }]);
+  });
+
   it("posts the raw WAV with a Token header and maps utterances", async () => {
     server = await fakeServer((_req, res) =>
       json(res, {
