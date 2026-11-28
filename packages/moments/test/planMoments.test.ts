@@ -368,4 +368,175 @@ describe("long typing sessions", () => {
     }
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
+
+  it("keeps flare pointer coordinates so planMoments still emits flare moments past the key limit", async () => {
+    const interactions: LocalMomentInput["interactions"] = [];
+    for (let i = 0; i < 4005; i++) {
+      const t = 20_000 + i * 50;
+      interactions.push({ kind: "key_down", time_ms: t, key_code: 0 }, { kind: "key_up", time_ms: t + 20, key_code: 0 });
+    }
+    interactions.push({ kind: "key_down", time_ms: 5_000, key_code: 59 }, { kind: "key_up", time_ms: 6_500, key_code: 59 });
+    for (let t = 4_500; t <= 6_600; t += 100) {
+      interactions.push({ kind: "move", time_ms: t, x: 378, y: 491 });
+    }
+
+    const { plan } = await planMoments({
+      schemaVersion: 2,
+      durationMs: 250_000,
+      transcript: [],
+      capture: { x: 0, y: 0, width: 1512, height: 982 },
+      clickElements: [],
+      interactionSelection: "bounded sample; full stream retained locally",
+      interactions,
+    });
+    const flare = v2(plan).find((m) => m.source === "flare");
+    expect(flare).toMatchObject({ timestamp_ms: 5_120, frame_at_ms: 6_380 });
+    expect(flare?.x).toBeCloseTo(378 / 1512, 3);
+    expect(flare?.y).toBeCloseTo(491 / 982, 3);
+  });
+
+  it("preserves distinct coordinates for multiple flares and mixed keyboard+scroll overload", async () => {
+    const interactions: LocalMomentInput["interactions"] = [];
+    // 3,000 letter pairs (6,000 edges) + 3,000 scrolls = 9,000 > 8,000 limit
+    for (let i = 0; i < 3000; i++) {
+      const t = 50_000 + i * 50;
+      interactions.push({ kind: "key_down", time_ms: t, key_code: 0 }, { kind: "key_up", time_ms: t + 20, key_code: 0 });
+      interactions.push({ kind: "scroll", time_ms: t + 10, x: 500, y: 500, delta_x: 0, delta_y: -3 });
+    }
+    // Flare 1 at (378, 491) and Flare 2 at (1134, 245.5)
+    interactions.push(
+      { kind: "move", time_ms: 5_000, x: 378, y: 491 },
+      { kind: "key_down", time_ms: 5_000, key_code: 59 },
+      { kind: "move", time_ms: 6_380, x: 378, y: 491 },
+      { kind: "key_up", time_ms: 6_500, key_code: 59 },
+      { kind: "move", time_ms: 20_000, x: 1134, y: 245.5 },
+      { kind: "key_down", time_ms: 20_000, key_code: 59 },
+      { kind: "move", time_ms: 21_880, x: 1134, y: 245.5 },
+      { kind: "key_up", time_ms: 22_000, key_code: 59 },
+    );
+
+    const bounded = boundInteractions(interactions);
+    expect(bounded.length).toBeLessThanOrEqual(MAX_PLANNER_INTERACTIONS);
+    // Original subsequence ordering preserved.
+    const pos = bounded.map((e) => interactions.indexOf(e));
+    expect(pos.every((i, k) => i >= 0 && (k === 0 || i > pos[k - 1]))).toBe(true);
+
+    const { plan } = await planMoments({
+      schemaVersion: 2,
+      durationMs: 250_000,
+      transcript: [],
+      capture: { x: 0, y: 0, width: 1512, height: 982 },
+      clickElements: [],
+      interactionSelection: "bounded sample; full stream retained locally",
+      interactions,
+    });
+    const flares = v2(plan)
+      .filter((m) => m.source === "flare")
+      .sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+    expect(flares).toHaveLength(2);
+    expect(flares[0]).toMatchObject({ timestamp_ms: 5_120, frame_at_ms: 6_380 });
+    expect(flares[0].x).toBeCloseTo(378 / 1512, 3);
+    expect(flares[0].y).toBeCloseTo(491 / 982, 3);
+    expect(flares[1]).toMatchObject({ timestamp_ms: 20_120, frame_at_ms: 21_880 });
+    expect(flares[1].x).toBeCloseTo(1134 / 1512, 3);
+    expect(flares[1].y).toBeCloseTo(245.5 / 982, 3);
+  });
+
+  it("keeps full edge budget when there are no moves or no flares", () => {
+    const limit = 20;
+    const keysOnly: LocalMomentInput["interactions"] = [];
+    for (let i = 0; i < 15; i++) {
+      keysOnly.push({ kind: "key_down", time_ms: i * 100, key_code: 0 }, { kind: "key_up", time_ms: i * 100 + 20, key_code: 0 });
+    }
+    const bounded = boundInteractions(keysOnly, limit);
+    expect(bounded).toHaveLength(limit);
+    expect(bounded.every((e) => e.kind === "key_down" || e.kind === "key_up")).toBe(true);
+  });
+
+  it("does not evict essential edges for pointer anchors when essential events exhaust the budget", () => {
+    const limit = 20;
+    const essentialHeavy: LocalMomentInput["interactions"] = [];
+    for (let i = 0; i < 12; i++) {
+      essentialHeavy.push(
+        { kind: "key_down", time_ms: i * 2_000, key_code: 59 },
+        { kind: "key_up", time_ms: i * 2_000 + 1_000, key_code: 59 },
+      );
+    }
+    essentialHeavy.push({ kind: "move", time_ms: 500, x: 100, y: 100 });
+    const bounded = boundInteractions(essentialHeavy, limit);
+    expect(bounded).toHaveLength(limit);
+    expect(bounded.every((e) => e.kind !== "move")).toBe(true);
+  });
+
+  it("deduplicates fallback anchors (>1000 ms gap) and ignores malformed move coordinates", () => {
+    const events: LocalMomentInput["interactions"] = [
+      { kind: "move", time_ms: 100, x: 200, y: 300 },
+      // Malformed move right at flare 1's frame_at_ms (4880) must be ignored in favor of (200, 300).
+      { kind: "move", time_ms: 4_880, x: Number.NaN, y: 300 },
+      { kind: "key_down", time_ms: 4_000, key_code: 59 },
+      { kind: "key_up", time_ms: 5_000, key_code: 59 },
+      { kind: "key_down", time_ms: 8_000, key_code: 59 },
+      { kind: "key_up", time_ms: 9_000, key_code: 59 },
+    ];
+    for (let i = 0; i < 15; i++) {
+      const t = 20_000 + i * 100;
+      events.push({ kind: "key_down", time_ms: t, key_code: 0 }, { kind: "key_up", time_ms: t + 20, key_code: 0 });
+    }
+    const bounded = boundInteractions(events, 21);
+    expect(bounded.length).toBeLessThanOrEqual(21);
+    expect(bounded.filter((e) => e.kind === "move")).toEqual([{ kind: "move", time_ms: 100, x: 200, y: 300 }]);
+  });
+
+  it("matches cursorPositionAt tie-breaking on unsorted and equal-timestamp/equal-distance moves", () => {
+    const events: LocalMomentInput["interactions"] = [];
+    for (let i = 0; i < 15; i++) {
+      const t = 100 + i * 50;
+      events.push({ kind: "key_down", time_ms: t, key_code: 0 }, { kind: "key_up", time_ms: t + 10, key_code: 0 });
+    }
+    // Unsorted: key_up before key_down; equal-timestamp moves at 5880 (first wins) and equal-distance moves around 9880 (later wins).
+    events.push(
+      { kind: "key_up", time_ms: 6_000, key_code: 59 },
+      { kind: "move", time_ms: 5_880, x: 400, y: 500 },
+      { kind: "move", time_ms: 5_880, x: 401, y: 501 },
+      { kind: "key_down", time_ms: 5_000, key_code: 59 },
+      { kind: "key_down", time_ms: 9_000, key_code: 59 },
+      { kind: "key_up", time_ms: 10_000, key_code: 59 },
+      { kind: "move", time_ms: 9_680, x: 111, y: 222 },
+      { kind: "move", time_ms: 10_080, x: 333, y: 444 },
+    );
+    const bounded = boundInteractions(events, 22);
+    expect(bounded.length).toBeLessThanOrEqual(22);
+    expect(bounded.filter((e) => e.kind === "move")).toEqual([
+      { kind: "move", time_ms: 5_880, x: 400, y: 500 },
+      { kind: "move", time_ms: 10_080, x: 333, y: 444 },
+    ]);
+  });
+
+  it("ignores moves past durationMs when anchoring a flare near the end of the recording", async () => {
+    const interactions: LocalMomentInput["interactions"] = [];
+    for (let i = 0; i < 4005; i++) {
+      const t = 100 + i * 1;
+      interactions.push({ kind: "key_down", time_ms: t, key_code: 0 }, { kind: "key_up", time_ms: t + 1, key_code: 0 });
+    }
+    // Flare ends at durationMs=6000; out-of-range move at 6050 must not shadow valid move at 5800.
+    interactions.push(
+      { kind: "move", time_ms: 5_800, x: 378, y: 491 },
+      { kind: "move", time_ms: 6_050, x: 1200, y: 800 },
+      { kind: "key_down", time_ms: 5_000, key_code: 59 },
+      { kind: "key_up", time_ms: 6_000, key_code: 59 },
+    );
+    const { plan } = await planMoments({
+      schemaVersion: 2,
+      durationMs: 6_000,
+      transcript: [],
+      capture: { x: 0, y: 0, width: 1512, height: 982 },
+      clickElements: [],
+      interactionSelection: "bounded sample; full stream retained locally",
+      interactions,
+    });
+    const flare = v2(plan).find((m) => m.source === "flare");
+    expect(flare).toMatchObject({ timestamp_ms: 5_120, frame_at_ms: 5_880 });
+    expect(flare?.x).toBeCloseTo(378 / 1512, 3);
+    expect(flare?.y).toBeCloseTo(491 / 982, 3);
+  });
 });
