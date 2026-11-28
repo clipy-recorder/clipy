@@ -80,7 +80,7 @@ export async function transcribeAssemblyAI(
       : groupWordsIntoSegments((job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text })));
   input.onProgress?.(1);
   return {
-    segments: toTimeline(segments),
+    segments: toTimeline(segments, input.info.durationSec),
     language: job.language_code ?? undefined,
     engine: `assemblyai${config.model ? `:${config.model}` : ""}`,
     gaps: [],

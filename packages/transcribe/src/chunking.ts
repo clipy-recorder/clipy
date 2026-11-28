@@ -169,13 +169,24 @@ export interface PieceResult {
  * Put every piece's segments on the recording's timeline, keep each segment
  * only from the piece whose core holds its centre (so overlap is never
  * transcribed twice), then sort and nudge so segments never overlap.
+ *
+ * Providers sometimes answer with times outside the audio they were sent
+ * (a start just below 0, or an end a little past the last sample). Each
+ * segment is clamped to its piece's audio, and to the recording's start, and
+ * a segment that lies wholly outside that audio is dropped.
  */
 export function mergePieces(pieces: PieceResult[]): TranscriptSegment[] {
   const kept: Array<{ start: number; end: number; text: string }> = [];
   for (const { plan, segments } of pieces) {
+    const audioStart = Math.max(0, plan.extractStartSec);
+    const audioEnd = plan.extractStartSec + plan.extractDurSec;
+    const clamp = (t: number) => Math.min(Math.max(t, audioStart), audioEnd);
     for (const s of segments) {
-      const start = s.start + plan.extractStartSec;
-      const end = Math.max(s.end, s.start) + plan.extractStartSec;
+      const rawStart = s.start + plan.extractStartSec;
+      const rawEnd = Math.max(s.end, s.start) + plan.extractStartSec;
+      const start = clamp(rawStart);
+      const end = clamp(rawEnd);
+      if (end <= start && rawEnd > rawStart) continue;
       const centre = (start + end) / 2;
       if (centre < plan.keepStartSec || centre >= plan.keepEndSec) continue;
       const text = s.text.trim();
@@ -257,10 +268,13 @@ export function tokensInCore(plan: ChunkPlan, tokens: string[], timestamps: numb
   return out;
 }
 
-/** Segments that are already on the recording's timeline (seconds) as sorted, non-overlapping ms segments. */
-export function toTimeline(segments: RelativeSegment[]): TranscriptSegment[] {
+/**
+ * Segments that are already on the recording's timeline (seconds) as sorted,
+ * non-overlapping ms segments, clamped to [0, totalSec].
+ */
+export function toTimeline(segments: RelativeSegment[], totalSec = Infinity): TranscriptSegment[] {
   return mergePieces([
-    { plan: { index: 0, extractStartSec: 0, extractDurSec: Infinity, keepStartSec: -Infinity, keepEndSec: Infinity, hardCut: false }, segments },
+    { plan: { index: 0, extractStartSec: 0, extractDurSec: totalSec, keepStartSec: -Infinity, keepEndSec: Infinity, hardCut: false }, segments },
   ]);
 }
 

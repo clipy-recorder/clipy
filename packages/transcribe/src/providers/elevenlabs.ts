@@ -44,7 +44,7 @@ export async function transcribeElevenLabs(
     .map((w) => ({ start: w.start as number, end: w.end as number, text: w.text }));
   input.onProgress?.(1);
   return {
-    segments: toTimeline(groupWordsIntoSegments(words)),
+    segments: toTimeline(groupWordsIntoSegments(words), input.info.durationSec),
     language: parsed.data.language_code ?? undefined,
     engine: `elevenlabs:${model}`,
     gaps: [],

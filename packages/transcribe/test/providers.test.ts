@@ -152,6 +152,26 @@ describe("deepgram", () => {
     expect(req.body.length).toBe(44 + 3 * 32000);
   });
 
+  it("keeps segment times inside the recording", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [{ alternatives: [{ transcript: "x" }] }],
+          utterances: [
+            { start: -0.2, end: 1, transcript: "Early." },
+            { start: 2.5, end: 3.4, transcript: "Late." },
+            { start: 3.5, end: 4, transcript: "Beyond." },
+          ],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(3), { apiKey: KEY, baseUrl: server.url });
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 1000, text: "Early." },
+      { startMs: 2500, endMs: 3000, text: "Late." },
+    ]);
+  });
+
   it("falls back to words when there are no utterances", async () => {
     server = await fakeServer((_req, res) =>
       json(res, {

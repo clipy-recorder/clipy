@@ -6,6 +6,7 @@ import {
   parseSilencedetectOutput,
   planChunks,
   speechSecIn,
+  toTimeline,
   tokensInCore,
   trimToSpeech,
   type ChunkPlan,
@@ -166,6 +167,53 @@ describe("mergePieces", () => {
     const plan = planChunks([], 10, LOCAL_CHUNKING["english-fast"]);
     const merged = mergePieces([{ plan: plan[0], segments: [{ start: 1, end: 3, text: "a" }, { start: 2.5, end: 4, text: "b" }] }]);
     expect(merged[1]).toEqual({ startMs: 3000, endMs: 4000, text: "b" });
+  });
+
+  it("clamps segments to the audio each piece was given", () => {
+    const plan = planChunks([{ startSec: 129, endSec: 131 }], 250, LOCAL_CHUNKING["english-fast"]);
+    const [a, b] = plan;
+    const merged = mergePieces([
+      { plan: a, segments: [{ start: -0.4, end: 1, text: "before zero" }] },
+      { plan: b, segments: [{ start: b.extractDurSec - 1, end: b.extractDurSec + 2, text: "past the end" }] },
+    ]);
+    expect(merged).toEqual([
+      { startMs: 0, endMs: 1000, text: "before zero" },
+      { startMs: Math.round((b.extractStartSec + b.extractDurSec - 1) * 1000), endMs: 250000, text: "past the end" },
+    ]);
+  });
+
+  it("drops a segment that lies wholly outside its piece's audio", () => {
+    const plan = planChunks([], 10, LOCAL_CHUNKING["english-fast"]);
+    const merged = mergePieces([
+      {
+        plan: plan[0],
+        segments: [
+          { start: -3, end: -1, text: "before" },
+          { start: 2, end: 3, text: "inside" },
+          { start: 11, end: 12, text: "after" },
+        ],
+      },
+    ]);
+    expect(merged).toEqual([{ startMs: 2000, endMs: 3000, text: "inside" }]);
+  });
+});
+
+describe("toTimeline", () => {
+  it("clamps to the start of the recording and, when given, its length", () => {
+    const segs = [
+      { start: -0.25, end: 1, text: "a" },
+      { start: 4, end: 5.5, text: "b" },
+      { start: 6, end: 7, text: "c" },
+    ];
+    expect(toTimeline(segs, 5)).toEqual([
+      { startMs: 0, endMs: 1000, text: "a" },
+      { startMs: 4000, endMs: 5000, text: "b" },
+    ]);
+    expect(toTimeline(segs).map((s) => [s.startMs, s.endMs])).toEqual([
+      [0, 1000],
+      [4000, 5500],
+      [6000, 7000],
+    ]);
   });
 });
 
