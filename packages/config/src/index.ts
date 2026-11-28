@@ -86,6 +86,196 @@ export const DEFAULT_TRANSCRIPTION: StoredTranscription = { kind: "local", model
 
 type StoredFile = StoredConfig & Record<string, unknown>;
 
+function isJsonWhitespace(code: number): boolean {
+  return code === 0x20 || code === 0x09 || code === 0x0a || code === 0x0d;
+}
+
+function isDigit(code: number): boolean {
+  return code >= 0x30 && code <= 0x39;
+}
+
+function isHexDigit(code: number): boolean {
+  return isDigit(code) || (code >= 0x41 && code <= 0x46) || (code >= 0x61 && code <= 0x66);
+}
+
+/**
+ * Character offset of the first RFC 8259 JSON syntax error in `text` (used when
+ * V8 omits `position N` on Node 22+). Returns only an index, never file content.
+ */
+function findJsonErrorOffset(text: string): number {
+  const len = text.length;
+  let pos = 0;
+  const stack: Array<"object" | "array"> = [];
+
+  const skipWs = (): void => {
+    while (pos < len && isJsonWhitespace(text.charCodeAt(pos))) pos++;
+  };
+
+  const scanString = (): number => {
+    pos++; // skip opening '"'
+    while (pos < len) {
+      const ch = text.charCodeAt(pos);
+      if (ch === 0x22) {
+        pos++;
+        return -1;
+      }
+      if (ch < 0x20) return pos; // unescaped control character
+      if (ch === 0x5c) {
+        pos++;
+        if (pos >= len) return len;
+        const esc = text.charCodeAt(pos);
+        if (esc === 0x75) {
+          pos++;
+          for (let i = 0; i < 4; i++) {
+            if (pos >= len) return len;
+            if (!isHexDigit(text.charCodeAt(pos))) return pos;
+            pos++;
+          }
+          continue;
+        }
+        if (
+          esc !== 0x22 &&
+          esc !== 0x5c &&
+          esc !== 0x2f &&
+          esc !== 0x62 &&
+          esc !== 0x66 &&
+          esc !== 0x6e &&
+          esc !== 0x72 &&
+          esc !== 0x74
+        ) {
+          return pos;
+        }
+      }
+      pos++;
+    }
+    return len;
+  };
+
+  const scanNumber = (): number => {
+    if (text.charCodeAt(pos) === 0x2d) {
+      pos++;
+      if (pos >= len) return len;
+    }
+    const first = text.charCodeAt(pos);
+    if (first === 0x30) {
+      pos++;
+    } else if (first >= 0x31 && first <= 0x39) {
+      pos++;
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    } else {
+      return pos;
+    }
+    if (pos < len && text.charCodeAt(pos) === 0x2e) {
+      pos++;
+      if (pos >= len || !isDigit(text.charCodeAt(pos))) return pos;
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    }
+    if (pos < len && (text.charCodeAt(pos) === 0x65 || text.charCodeAt(pos) === 0x45)) {
+      pos++;
+      if (pos < len && (text.charCodeAt(pos) === 0x2b || text.charCodeAt(pos) === 0x2d)) pos++;
+      if (pos >= len || !isDigit(text.charCodeAt(pos))) return pos;
+      while (pos < len && isDigit(text.charCodeAt(pos))) pos++;
+    }
+    return -1;
+  };
+
+  const scanLiteral = (literal: string): number => {
+    for (let i = 0; i < literal.length; i++) {
+      if (pos >= len || text.charCodeAt(pos) !== literal.charCodeAt(i)) return pos;
+      pos++;
+    }
+    return -1;
+  };
+
+  const scanObjectKeyAndColon = (): number => {
+    skipWs();
+    if (pos >= len) return len;
+    if (text.charCodeAt(pos) !== 0x22) return pos;
+    const strErr = scanString();
+    if (strErr !== -1) return strErr;
+    skipWs();
+    if (pos >= len) return len;
+    if (text.charCodeAt(pos) !== 0x3a) return pos;
+    pos++;
+    return -1;
+  };
+
+  while (true) {
+    skipWs();
+    if (pos >= len) return len;
+
+    const ch = text.charCodeAt(pos);
+    if (ch === 0x7b) {
+      pos++;
+      skipWs();
+      if (pos >= len) return len;
+      if (text.charCodeAt(pos) === 0x7d) {
+        pos++;
+      } else {
+        stack.push("object");
+        const keyErr = scanObjectKeyAndColon();
+        if (keyErr !== -1) return keyErr;
+        continue;
+      }
+    } else if (ch === 0x5b) {
+      pos++;
+      skipWs();
+      if (pos >= len) return len;
+      if (text.charCodeAt(pos) === 0x5d) {
+        pos++;
+      } else {
+        stack.push("array");
+        continue;
+      }
+    } else {
+      let err = -1;
+      if (ch === 0x22) err = scanString();
+      else if (ch === 0x74) err = scanLiteral("true");
+      else if (ch === 0x66) err = scanLiteral("false");
+      else if (ch === 0x6e) err = scanLiteral("null");
+      else if (ch === 0x2d || isDigit(ch)) err = scanNumber();
+      else return pos;
+      if (err !== -1) return err;
+    }
+
+    while (stack.length > 0) {
+      skipWs();
+      if (pos >= len) return len;
+      const sep = text.charCodeAt(pos);
+      const container = stack[stack.length - 1];
+      if (container === "array") {
+        if (sep === 0x5d) {
+          pos++;
+          stack.pop();
+          continue;
+        }
+        if (sep === 0x2c) {
+          pos++;
+          break;
+        }
+        return pos;
+      }
+      if (sep === 0x7d) {
+        pos++;
+        stack.pop();
+        continue;
+      }
+      if (sep === 0x2c) {
+        pos++;
+        const keyErr = scanObjectKeyAndColon();
+        if (keyErr !== -1) return keyErr;
+        break;
+      }
+      return pos;
+    }
+
+    if (stack.length === 0) {
+      skipWs();
+      return pos;
+    }
+  }
+}
+
 /** Character offset to "line L, column C", for a JSON error that must not quote the file. */
 function lineAndColumn(text: string, offset: number): string {
   const before = text.slice(0, offset).split("\n");
@@ -109,9 +299,10 @@ function readStored(path: string): StoredFile {
     raw = JSON.parse(text);
   } catch (error) {
     // V8's message can quote part of the file, which may hold a key. Keep only the position.
+    // On Node 22+, unexpected-token errors omit `position N`, so fall back to our scanner.
     const position = /position (\d+)/.exec(String((error as Error).message))?.[1];
-    const where = position ? ` at ${lineAndColumn(text, Number(position))}` : "";
-    throw new ConfigError(`The config file ${path} is not valid JSON${where}.`);
+    const offset = position ? Number(position) : findJsonErrorOffset(text);
+    throw new ConfigError(`The config file ${path} is not valid JSON at ${lineAndColumn(text, offset)}.`);
   }
   const parsed = storedConfigSchema.safeParse(raw);
   if (!parsed.success) {
