@@ -20,6 +20,10 @@ body:
         - packages/transcribe
         - clipy CLI with --local
         - Docs
+        - plugins/watch (/watch)
+        - plugins/record (/record)
+        - plugins/clipy-record (Record button)
+        - CI or scripts
     validations:
       required: true
   - type: textarea
