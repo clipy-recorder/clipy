@@ -213,3 +213,121 @@ pub(crate) fn apply_capture_health(diagnostics: &mut serde_json::Value, report: 
         health["screen_capture"] = screen.to_json();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::mic_reopen::MicReopenStats;
+    use crate::capture::mic_silence::{MicSilenceReason, MicSilenceSummary};
+    use crate::capture::stream_health::ScreenCaptureReport;
+
+    #[test]
+    fn ping_os_version_parses_supported_inputs_and_rejects_invalid_ones() {
+        assert_eq!(
+            ping_os_version("Microsoft Windows [Version 10.0.26100.6584]"),
+            Some("10.0.26100.6584".to_string())
+        );
+        assert_eq!(
+            ping_os_version("Microsoft Windows [Versão 10.0.19045.4651]"),
+            Some("10.0.19045.4651".to_string())
+        );
+        assert_eq!(ping_os_version("15.3.1"), Some("15.3.1".to_string()));
+        assert_eq!(ping_os_version(""), None);
+        assert_eq!(ping_os_version(&"1".repeat(33)), None);
+    }
+
+    #[test]
+    fn video_bitrate_for_height_matches_bucket_edges() {
+        assert_eq!(video_bitrate_for_height(Some(720)), 2_700_000);
+        assert_eq!(video_bitrate_for_height(Some(721)), 3_500_000);
+        assert_eq!(video_bitrate_for_height(Some(1080)), 3_500_000);
+        assert_eq!(video_bitrate_for_height(Some(1440)), 4_700_000);
+        assert_eq!(video_bitrate_for_height(Some(1441)), 8_000_000);
+        assert_eq!(video_bitrate_for_height(None), 8_000_000);
+    }
+
+    #[test]
+    fn quality_tier_for_height_maps_tiers_and_none() {
+        assert_eq!(quality_tier_for_height(Some(1080)), "standard");
+        assert_eq!(quality_tier_for_height(Some(1081)), "pro_1440");
+        assert_eq!(quality_tier_for_height(Some(1440)), "pro_1440");
+        assert_eq!(quality_tier_for_height(Some(1441)), "pro_4k");
+        assert_eq!(quality_tier_for_height(None), "pro_4k");
+    }
+
+    #[test]
+    fn apply_capture_health_writes_present_fields_into_diagnostics() {
+        let mut diagnostics = serde_json::json!({ "health": {} });
+        let report = CaptureHealthReport {
+            source_video_frames: Some(120),
+            last_source_frame_ms: Some(4_000),
+            audio: Some(AudioStateReport {
+                include_mic: true,
+                include_system_audio: false,
+                mic_started: true,
+                mic_error: Some("none"),
+                mic_chunks: 42,
+                loopback_chunks: 0,
+                mic_silence: Some(MicSilenceSummary {
+                    warned: true,
+                    reason: Some(MicSilenceReason::DigitalSilence),
+                    silent_ms: 5_000,
+                    signal_seen: false,
+                }),
+                mic_reopen: Some(MicReopenStats {
+                    reopens: 2,
+                    reasons: vec!["stream_error", "digital_silence"],
+                }),
+            }),
+            screen_capture: Some(ScreenCaptureReport {
+                pixel_format: Some("bgra"),
+                screen_buffers: 10,
+                frames_without_image: 1,
+                frame_status: [9, 1, 0, 0, 0, 0],
+                frame_status_other: 0,
+                stop_error_code: None,
+                stop_error_domain: None,
+                rejected_frames: 0,
+                rescaled_frames: 0,
+            }),
+        };
+
+        apply_capture_health(&mut diagnostics, &report);
+
+        assert_eq!(diagnostics["health"]["source_video_frames"], 120);
+        assert_eq!(diagnostics["health"]["last_source_frame_ms"], 4_000);
+        assert_eq!(diagnostics["health"]["audio"]["include_mic"], true);
+        assert_eq!(diagnostics["health"]["audio"]["include_system_audio"], false);
+        assert_eq!(diagnostics["health"]["audio"]["mic_started"], true);
+        assert_eq!(diagnostics["health"]["audio"]["mic_error"], "none");
+        assert_eq!(diagnostics["health"]["audio"]["mic_chunks"], 42);
+        assert_eq!(diagnostics["health"]["audio"]["loopback_chunks"], 0);
+        assert_eq!(diagnostics["health"]["audio"]["mic_silence_warned"], true);
+        assert_eq!(
+            diagnostics["health"]["audio"]["mic_silence_reason"],
+            "digital_silence"
+        );
+        assert_eq!(diagnostics["health"]["audio"]["mic_silent_ms"], 5_000);
+        assert_eq!(diagnostics["health"]["audio"]["mic_signal_seen"], false);
+        assert_eq!(diagnostics["health"]["audio"]["mic_reopens"], 2);
+        assert_eq!(
+            diagnostics["health"]["audio"]["mic_reopen_reasons"],
+            "stream_error-digital_silence"
+        );
+        assert_eq!(
+            diagnostics["health"]["screen_capture"]["pixel_format"],
+            "bgra"
+        );
+        assert_eq!(
+            diagnostics["health"]["screen_capture"]["screen_buffers"],
+            10
+        );
+    }
+
+    #[test]
+    fn apply_capture_health_skips_absent_fields() {
+        let mut diagnostics = serde_json::json!({ "health": {} });
+        apply_capture_health(&mut diagnostics, &CaptureHealthReport::default());
+        assert_eq!(diagnostics, serde_json::json!({ "health": {} }));
+    }
+}
