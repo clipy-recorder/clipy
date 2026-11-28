@@ -26,8 +26,18 @@ pub fn model_missing_gap(model: LocalModelId) -> String {
 /// A keyed provider without a key. `message` comes from
 /// `settings::stt_config` and already says to add it in Settings.
 pub fn missing_key_gap(message: &str) -> String {
-    let message = message.trim().trim_end_matches(RETRY_HINT).trim_end();
-    let message = message.trim_end_matches(',').trim_end_matches('.');
+    let mut message = message.trim();
+    loop {
+        if let Some(rest) = message.strip_suffix(RETRY_HINT) {
+            message = rest.trim_end();
+        } else if let Some(rest) =
+            message.strip_suffix(|c: char| c.is_whitespace() || c == ',' || c == '.')
+        {
+            message = rest;
+        } else {
+            break;
+        }
+    }
     format!(
         "0 ms: {message}. No transcript was made; the recorded audio is unchanged. Fix it in Settings, {RETRY_HINT}"
     )
@@ -35,8 +45,8 @@ pub fn missing_key_gap(message: &str) -> String {
 
 /// A stretch the engine or provider could not transcribe.
 pub fn gap_line(start_ms: u64, end_ms: u64, reason: &str) -> String {
-    let reason = reason.replace(['\n', '\r'], " ");
-    let reason = reason.trim().trim_end_matches('.');
+    let reason = reason.split_whitespace().collect::<Vec<_>>().join(" ");
+    let reason = reason.trim_end_matches(['.', ' ']);
     format!("{start_ms} ms: {reason} (until {end_ms} ms).")
 }
 
@@ -123,5 +133,84 @@ mod tests {
             ]
         );
         assert_eq!(segment_values(vec![(5, 9, "x".into())], 0).len(), 1);
+    }
+
+    #[test]
+    fn gap_lines_handle_crlf_and_trailing_dots() {
+        let crlf = gap_line(1000, 2500, "Engine failed.\r\nagain");
+        assert_eq!(crlf, "1000 ms: Engine failed. again (until 2500 ms).");
+
+        let multiline_dots = gap_line(1000, 2500, "  Engine failed.\r\n\r\nagain...\r\n");
+        assert_eq!(
+            multiline_dots,
+            "1000 ms: Engine failed. again (until 2500 ms)."
+        );
+
+        let trailing_dots = gap_line(1000, 2500, "Engine failed...");
+        assert_eq!(trailing_dots, "1000 ms: Engine failed (until 2500 ms).");
+
+        for line in [&crlf, &multiline_dots, &trailing_dots] {
+            assert!(!line.contains('\n') && !line.contains('\r'));
+            assert!(!line.contains("  "));
+            assert!(!line.contains(". (until"));
+            assert!(line.ends_with(" (until 2500 ms)."));
+        }
+    }
+
+    #[test]
+    fn missing_key_gap_avoids_duplicate_punctuation_and_retry_hint() {
+        let expected = "0 ms: OpenAI needs an API key. Add it in Settings. No transcript was made; the recorded audio is unchanged. Fix it in Settings, then Retry.";
+        for input in [
+            "OpenAI needs an API key. Add it in Settings, then Retry.",
+            "OpenAI needs an API key. Add it in Settings. then Retry.",
+            "OpenAI needs an API key. Add it in Settings, then Retry. then Retry.",
+        ] {
+            let gap = missing_key_gap(input);
+            assert_eq!(gap, expected);
+            assert_eq!(gap.matches(RETRY_HINT).count(), 1);
+            assert!(!gap.contains("..") && !gap.contains(",.") && !gap.contains(".,"));
+        }
+
+        let expected_short = "0 ms: OpenAI needs an API key. No transcript was made; the recorded audio is unchanged. Fix it in Settings, then Retry.";
+        for input in [
+            "OpenAI needs an API key,",
+            "OpenAI needs an API key, ",
+            "OpenAI needs an API key,.",
+        ] {
+            let gap = missing_key_gap(input);
+            assert_eq!(gap, expected_short);
+            assert_eq!(gap.matches(RETRY_HINT).count(), 1);
+            assert!(!gap.contains("..") && !gap.contains(",.") && !gap.contains(".,"));
+        }
+    }
+
+    #[test]
+    fn segments_clamp_inverted_end_timestamps() {
+        let clamped = segment_values(
+            vec![
+                (500, 200, "inverted".into()),
+                (800, 100, "also inverted".into()),
+            ],
+            1000,
+        );
+        assert_eq!(
+            clamped,
+            vec![
+                json!({"startMs": 500, "endMs": 500, "text": "inverted"}),
+                json!({"startMs": 800, "endMs": 800, "text": "also inverted"}),
+            ]
+        );
+
+        let unknown_duration = segment_values(vec![(500, 200, "unknown duration".into())], 0);
+        assert_eq!(
+            unknown_duration,
+            vec![json!({"startMs": 500, "endMs": 500, "text": "unknown duration"})]
+        );
+
+        for segment in clamped.iter().chain(unknown_duration.iter()) {
+            let start = segment["startMs"].as_u64().unwrap();
+            let end = segment["endMs"].as_u64().unwrap();
+            assert!(end >= start);
+        }
     }
 }
