@@ -52,6 +52,11 @@ export interface TranscribeOptions {
   modelDir?: string;
   onProgress?: (p: TranscribeProgress) => void;
   /**
+   * Number of CPU threads for on-device transcription (1 to `availableParallelism()`).
+   * Defaults to `max(1, min(4, floor(availableParallelism() / 2)))`.
+   */
+  threads?: number;
+  /**
    * Path of the sherpa-onnx-node entry file for on-device transcription. The
    * engine is not a dependency of this package: the host installs it (the CLI
    * downloads it on first use) and says where. When absent it is resolved from
