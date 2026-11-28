@@ -53,7 +53,10 @@ export default function LocalModePanel({ signedIn, listAll = false }: { signedIn
   const refresh = useCallback(
     () =>
       invoke<LocalRecording[]>("list_local_recordings")
-        .then(setRecordings)
+        .then((rows) => {
+          setRecordings(rows);
+          setError(null);
+        })
         .catch((err) => setError(String(err)))
         .finally(() => setLoaded(true)),
     [],
