@@ -70,6 +70,54 @@ describe("samplesToEvents", () => {
   it("returns nothing without samples", () => {
     expect(samplesToEvents([], T0)).toEqual([]);
   });
+
+  it("holds its promises across many random sample streams", () => {
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const pick = (n: number) => Math.floor(rnd() * n);
+    for (let run = 0; run < 300; run++) {
+      // Times are drawn at random, so samples arrive out of order and some
+      // land before the start or after the end of the recording.
+      const endedAt = T0 + 500 + pick(4000);
+      const span = endedAt - T0;
+      const samples: PointerSample[] = [];
+      for (let i = pick(40); i >= 0; i--) samples.push({ t: T0 - 300 + pick(span + 600), x: pick(1920), y: pick(1080), buttons: pick(8) });
+
+      const events = samplesToEvents(samples, T0, endedAt);
+
+      const held = new Set<number>();
+      let previous = 0;
+      for (const e of events) {
+        expect(e.time_ms).toBeGreaterThanOrEqual(previous);
+        expect(e.time_ms).toBeLessThanOrEqual(span);
+        previous = e.time_ms;
+        if (e.kind === "down") {
+          expect(held.has(e.button!)).toBe(false);
+          held.add(e.button!);
+        } else if (e.kind === "up") {
+          expect(held.has(e.button!)).toBe(true);
+          held.delete(e.button!);
+        }
+      }
+
+      // A button already held when recording started stays silent until it is
+      // seen released, so its first `down` can only come after that release.
+      const inOrder = [...samples].sort((a, b) => a.t - b.t);
+      const before = inOrder.filter((x) => x.t < T0).at(-1);
+      const within = inOrder.filter((x) => x.t >= T0 && x.t <= endedAt);
+      for (const [bit, button] of [
+        [1, 1],
+        [2, 2],
+        [4, 3],
+      ]) {
+        if (!before || (before.buttons & bit) === 0) continue;
+        const released = within.find((x) => (x.buttons & bit) === 0);
+        const firstDown = events.find((e) => e.kind === "down" && e.button === button);
+        if (!released) expect(firstDown).toBeUndefined();
+        else if (firstDown) expect(firstDown.time_ms).toBeGreaterThanOrEqual(released.t - T0);
+      }
+    }
+  });
 });
 
 describe("helper scripts", () => {
