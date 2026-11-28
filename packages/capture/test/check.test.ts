@@ -1,8 +1,19 @@
+import { platform } from "node:process";
 import { describe, expect, it } from "vitest";
 import { checkCapture, hasDevice, hasFilter } from "../src/check.js";
 import { looksLikeMacPermissionError, parseProbeJson } from "../src/capture.js";
 import type { Runner } from "../src/proc.js";
 import { FAKE_FFMPEG, FAKE_FFPROBE } from "./fakeTools.js";
+
+/**
+ * On non-Linux/non-macOS/non-Windows hosts (e.g. running macOS tests on
+ * Windows CI), the FAKE_FFMPEG path uses the host OS path format while
+ * findExecutable is asked to interpret it for a different platform. Skip
+ * those tests gracefully with a clear message instead of failing cryptically.
+ */
+function skipUnlessPlatform(target: string): boolean {
+  return platform !== target;
+}
 
 const DEVICES = `Devices:
  D. = Demuxing supported
@@ -41,6 +52,7 @@ describe("checkCapture", () => {
     expect(result.ok).toBe(false);
     expect(result.ffmpeg).toBeNull();
     expect(result.hints.join(" ")).toMatch(/apt install ffmpeg/);
+    expect(result.hints.join(" ")).toMatch(/CLIPY_FFMPEG/);
   });
 
   it("passes on Linux with an X display, x11grab and libx264", async () => {

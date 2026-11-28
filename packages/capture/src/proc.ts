@@ -36,7 +36,13 @@ export const realRunner: Runner = (cmd, args, env = process.env) =>
 
 /** Look a program up on PATH (and PATHEXT on Windows) without spawning it. */
 export function findExecutable(name: string, platform: Platform = currentPlatform(), env: NodeJS.ProcessEnv = process.env): string | null {
-  if (name.includes("/") || (platform === "win32" && name.includes("\\"))) return isExecutable(name, platform) ? name : null;
+  // Detect whether the name is already an absolute path using the HOST OS
+  // conventions, not the mocked platform. This matters in tests that mock a
+  // different platform (e.g. running macOS tests on Windows): the CLIPY_FFMPEG
+  // env var holds a host-OS path and must be treated as an absolute path
+  // regardless of which platform is being simulated.
+  const isAbsolutePath = name.includes("/") || name.includes("\\");
+  if (isAbsolutePath) return isExecutable(name, platform) ? name : null;
   const path = env.PATH ?? env.Path ?? "";
   const sep = platform === "win32" ? ";" : delimiter;
   const exts = platform === "win32" ? (env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM").split(";").filter(Boolean) : [""];
@@ -53,7 +59,11 @@ export function findExecutable(name: string, platform: Platform = currentPlatfor
 function isExecutable(path: string, platform: Platform): boolean {
   try {
     if (!statSync(path).isFile()) return false;
-    if (platform !== "win32") accessSync(path, constants.X_OK);
+    // On the host Windows OS, file permissions work differently from POSIX —
+    // .bat/.exe/.cmd files are executable by convention. Skip the X_OK check
+    // when actually running on Windows regardless of the simulated platform,
+    // so cross-platform tests (e.g. macOS tests run on Windows CI) work correctly.
+    if (process.platform !== "win32" && platform !== "win32") accessSync(path, constants.X_OK);
     return true;
   } catch {
     return false;
