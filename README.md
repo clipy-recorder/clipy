@@ -303,7 +303,7 @@ take an agent starts asks for your consent in the app.
 | `packages/moments` | Picks the moments worth a screenshot. Rules on your machine find highlights, drawings, clicks and pauses; with a model it also finds what you pointed at while talking. |
 | `packages/config` | Settings: which model picks spoken moments and how recordings are transcribed, from a config file and env vars. |
 | `packages/capture` | Records the screen with ffmpeg on macOS, Windows and Linux, with a pointer and click sidecar where the OS allows it. |
-| `packages/transcribe` | Turns speech into timestamped segments: downloadable on-device models, or your own key for OpenAI, Groq, Deepgram, AssemblyAI, ElevenLabs or Gemini. |
+| `packages/transcribe` | Turns speech into timestamped segments: downloadable on-device models, or your own key for OpenAI, Groq, Deepgram, AssemblyAI, ElevenLabs, Gemini or Rev.ai. |
 | `plugins/watch` | The Claude Code plugin that lets an agent watch any video. |
 | `plugins/record` | The Claude Code plugin that records your Mac or Windows screen so you can show an agent what you mean. |
 | `plugins/clipy-record` | The Record with Clipy button above the prompt in Claude Code. |
@@ -320,7 +320,7 @@ running on your machine with Ollama or LM Studio.
 | Ollama or LM Studio | Nothing: the model runs on your machine. |
 | A model provider (OpenRouter, OpenAI, Gemini, Groq or a custom URL) | The transcript text, the labels of what you clicked, and a bounded sample of pointer and key events go to that provider, under its terms. Video and screenshots do not. With OpenRouter, requests also name the app (`HTTP-Referer: https://clipy.online`, `X-Title: Clipy`), as OpenRouter asks apps to. |
 | On-device transcription | Nothing: the audio stays on your machine. |
-| A transcription key (OpenAI, Groq, Deepgram, AssemblyAI, ElevenLabs or Gemini) | The audio goes to that provider, under its terms. |
+| A transcription key (OpenAI, Groq, Deepgram, AssemblyAI, ElevenLabs, Gemini or Rev.ai) | The audio goes to that provider, under its terms. |
 
 ## Contribute
 

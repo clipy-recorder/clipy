@@ -173,6 +173,14 @@ describe("env vars override the file", () => {
     expect(errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE: "assemblyai" })).message).toMatch(
       /assemblyai needs an API key.*CLIPY_TRANSCRIBE_API_KEY/,
     );
+    expect(errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE: "revai" })).message).toMatch(
+      /revai needs an API key.*CLIPY_TRANSCRIBE_API_KEY/,
+    );
+    expect(loadConfig({ ...env, CLIPY_TRANSCRIBE: "revai", CLIPY_TRANSCRIBE_API_KEY: "rev-key", CLIPY_TRANSCRIBE_MODEL: "machine" }).transcription).toEqual({
+      kind: "revai",
+      apiKey: "rev-key",
+      model: "machine",
+    });
     expect(loadConfig({ ...env, CLIPY_TRANSCRIBE: "local" }).transcription).toEqual({ kind: "local", model: "english-fast" });
     expect(loadConfig({ ...env, CLIPY_TRANSCRIBE: "none" }).transcription).toEqual({ kind: "none" });
   });
@@ -236,6 +244,11 @@ describe("transcription presets", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
     expect(errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "huge" })).message).toMatch(/english-fast, multilingual/);
+  });
+
+  it("accepts revai in config.json", () => {
+    saveConfig({ transcription: { kind: "revai", apiKey: "rev-file-key" } }, env);
+    expect(loadConfig(env).transcription).toEqual({ kind: "revai", apiKey: "rev-file-key" });
   });
 });
 

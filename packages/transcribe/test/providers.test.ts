@@ -10,6 +10,7 @@ import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
+import { transcribeRevAI } from "../src/providers/revai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
@@ -341,6 +342,131 @@ describe("gemini", () => {
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { error: { message: SECRET_TEXT } }, 400));
     await expectSafeError(transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "gemini", 400);
+  });
+});
+
+describe("revai", () => {
+  it("submits multipart media, polls the job, and maps monologue elements to ms segments", async () => {
+    let polls = 0;
+    server = await fakeServer((req, res) => {
+      if (req.url === "/speechtotext/v1/jobs" && req.method === "POST") {
+        return json(res, { id: "rev-1", status: "in_progress", language: "en" });
+      }
+      if (req.url === "/speechtotext/v1/jobs/rev-1" && req.method === "GET") {
+        polls++;
+        if (polls < 2) return json(res, { id: "rev-1", status: "in_progress", language: "en" });
+        return json(res, { id: "rev-1", status: "transcribed", language: "en" });
+      }
+      if (req.url === "/speechtotext/v1/jobs/rev-1/transcript" && req.method === "GET") {
+        return json(res, {
+          monologues: [
+            {
+              speaker: 0,
+              elements: [
+                { type: "text", value: "One", ts: 0.1, end_ts: 0.4 },
+                { type: "punct", value: " " },
+                { type: "text", value: "two", ts: 0.4, end_ts: 3.5 },
+                { type: "punct", value: "." },
+              ],
+            },
+            {
+              speaker: 1,
+              elements: [
+                { type: "text", value: "Three", ts: 5.0, end_ts: 5.4 },
+                { type: "unknown", value: "<inaudible>" },
+              ],
+            },
+          ],
+        });
+      }
+      json(res, {}, 404);
+    });
+    const input = await audioInput(6);
+    const r = await transcribeRevAI(input, { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 });
+    expect(r.segments).toEqual([
+      { startMs: 100, endMs: 3500, text: "One two." },
+      { startMs: 5000, endMs: 5400, text: "Three" },
+    ]);
+    expect(r.language).toBe("en");
+    expect(r.engine).toBe("revai");
+    expect(input.progress.at(-1)).toBe(1);
+
+    const [create, poll1, poll2, transcript] = server.requests;
+    expect(create.headers.authorization).toBe(`Bearer ${KEY}`);
+    const form = await formData(create);
+    expect((form.get("media") as File).size).toBe(44 + 6 * 32000);
+    expect(form.get("options")).toBeNull();
+    expect(poll1.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(poll2.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(transcript.headers.authorization).toBe(`Bearer ${KEY}`);
+    expect(transcript.headers.accept).toBe("application/vnd.rev.transcript.v1.0+json");
+    expect(polls).toBe(2);
+  });
+
+  it("passes the model as options.transcriber", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/speechtotext/v1/jobs" && req.method === "POST") {
+        return json(res, { id: "rev-2", status: "transcribed" });
+      }
+      if (req.url === "/speechtotext/v1/jobs/rev-2/transcript") {
+        return json(res, { monologues: [{ speaker: 0, elements: [{ type: "text", value: "Hi", ts: 0, end_ts: 0.9 }, { type: "punct", value: "." }] }] });
+      }
+      json(res, {}, 404);
+    });
+    const r = await transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url, model: "machine" }, { pollIntervalMs: 5 });
+    const form = await formData(server.requests[0]);
+    expect(JSON.parse(String(form.get("options")))).toEqual({ transcriber: "machine" });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 900, text: "Hi." }]);
+    expect(r.engine).toBe("revai:machine");
+  });
+
+  it("fails cleanly when the job fails, without the provider's detail", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/speechtotext/v1/jobs") {
+        return json(res, { id: "rev-3", status: "in_progress" });
+      }
+      return json(res, { id: "rev-3", status: "failed", failure: "internal_processing_error", failure_detail: SECRET_TEXT });
+    });
+    const err = await transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as Error).message).toMatch(/revai/);
+    expect((err as Error).message).not.toContain(SECRET_TEXT);
+  });
+
+  it("reports HTTP errors safely", async () => {
+    server = await fakeServer((_req, res) => json(res, { title: SECRET_TEXT }, 401));
+    await expectSafeError(transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "revai", 401);
+  });
+
+  it("stops when cancelled during upload", async () => {
+    server = await fakeServer(() => new Promise(() => undefined));
+    const ac = new AbortController();
+    const input = { ...(await audioInput(1)), signal: ac.signal };
+    const p = transcribeRevAI(input, { apiKey: KEY, baseUrl: server.url });
+    setTimeout(() => ac.abort(), 50);
+    await expect(p).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("stops when cancelled during polling", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/speechtotext/v1/jobs") return json(res, { id: "rev-4", status: "in_progress" });
+      return json(res, { id: "rev-4", status: "in_progress" });
+    });
+    const ac = new AbortController();
+    const input = { ...(await audioInput(1)), signal: ac.signal };
+    const p = transcribeRevAI(input, { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5000 });
+    setTimeout(() => ac.abort(), 50);
+    await expect(p).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("times out when polling takes too long, without waiting for the poll interval", async () => {
+    server = await fakeServer((_req, res) => json(res, { id: "rev-5", status: "in_progress" }));
+    const t0 = Date.now();
+    const err = await transcribeRevAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5000, timeoutMs: 30 }).catch((e: Error) => e);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as Error).message).toMatch(/revai.*timed out/);
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(server.requests).toHaveLength(1);
   });
 });
 

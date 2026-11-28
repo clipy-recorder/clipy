@@ -19,6 +19,7 @@ import { transcribeDeepgram } from "./providers/deepgram.js";
 import { transcribeElevenLabs } from "./providers/elevenlabs.js";
 import { transcribeGemini } from "./providers/gemini.js";
 import { transcribeOpenAICompatible } from "./providers/openai.js";
+import { transcribeRevAI } from "./providers/revai.js";
 import type { TranscribeOptions, TranscribeResult, TranscriptGap, TranscriptionConfig } from "./types.js";
 
 export type {
@@ -92,6 +93,8 @@ function runEngine(input: AudioInput, config: Exclude<TranscriptionConfig, { kin
       return transcribeElevenLabs(input, config);
     case "gemini":
       return transcribeGemini(input, config);
+    case "revai":
+      return transcribeRevAI(input, config);
     default: {
       const kind = (config as { kind?: unknown }).kind;
       throw new Error(`Unknown transcription kind "${String(kind)}"`);
