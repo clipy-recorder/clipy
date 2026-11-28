@@ -158,4 +158,4 @@ claude --plugin-dir plugins/clipy-record
 - Let Claude watch any video, a YouTube link, a Loom link or a file:
   [plugins/watch](../watch/README.md).
 - Something not working? Run `clipy doctor`, or
-  [open an issue](https://github.com/clipy-recorder/clipy/issues/new?template=app_bug_report.yml).
+  [open an issue](https://github.com/clipy-recorder/clipy/issues/new?template=bug_report.yml).
