@@ -57,6 +57,20 @@ describe("Linux parsers", () => {
     ]);
   });
 
+  it("reads monitors positioned left of or above the primary display", () => {
+    expect(
+      parseXrandrMonitors(`Monitors: 3
+ 0: +*eDP-1 1920/344x1080/194+0+0 eDP-1
+ 1: +HDMI-1 1920/520x1080/320-1920+0 HDMI-1
+ 2: +DP-1 1920/520x1080/320+0-1080 DP-1
+`),
+    ).toEqual([
+      { name: "eDP-1", primary: true, x: 0, y: 0, width: 1920, height: 1080 },
+      { name: "HDMI-1", primary: false, x: -1920, y: 0, width: 1920, height: 1080 },
+      { name: "DP-1", primary: false, x: 0, y: -1080, width: 1920, height: 1080 },
+    ]);
+  });
+
   it("puts the primary monitor first, so display:0 is the main one", () => {
     expect(primaryFirst(parseXrandrMonitors(XRANDR)).map((s) => s.name)).toEqual(["HDMI-1", "eDP-1"]);
   });
