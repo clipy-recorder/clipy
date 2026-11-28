@@ -52,7 +52,7 @@ pub fn read<R: Runtime>(app: &AppHandle<R>, id: &str) -> Result<LocalRecordingDt
     let dir = super::directory(app, id)?;
     let status = read_json(&dir.join("status.json"));
     if status.is_null() {
-        bail!("Recording not found on this Mac");
+        bail!("Recording not found");
     }
     let metadata = read_json(&dir.join("metadata.json"));
     let transcript = read_json(&dir.join("transcript.json"));
