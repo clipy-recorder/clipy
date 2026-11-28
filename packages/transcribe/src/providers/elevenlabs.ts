@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { uploadProgress, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 export const ELEVENLABS_DEFAULT_MODEL = "scribe_v2";
@@ -35,6 +35,8 @@ export async function transcribeElevenLabs(
     joinUrl(config.baseUrl || ELEVENLABS_BASE_URL, "v1/speech-to-text"),
     { method: "POST", headers: { "xi-api-key": config.apiKey }, body: form },
     input.signal,
+    undefined,
+    { onUploadProgress: uploadProgress(input.onProgress, 0.9) },
   );
   const parsed = Answer.safeParse(raw);
   if (!parsed.success) throw new ProviderError(provider, 200, "unexpected answer shape");

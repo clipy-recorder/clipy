@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson, sleep } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { uploadProgress, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com";
 
@@ -34,6 +34,13 @@ export async function transcribeAssemblyAI(
   const auth = { authorization: config.apiKey };
   const pollMs = limits.pollIntervalMs ?? 3000;
   const timeoutMs = limits.timeoutMs ?? 60 * 60 * 1000;
+  let reported = 0;
+  const report = (fraction: number) => {
+    if (fraction > reported) {
+      reported = fraction;
+      input.onProgress?.(fraction);
+    }
+  };
 
   const audio = await readFile(input.wavPath);
   const up = Upload.safeParse(
@@ -42,10 +49,12 @@ export async function transcribeAssemblyAI(
       joinUrl(base, "v2/upload"),
       { method: "POST", headers: { ...auth, "Content-Type": "application/octet-stream" }, body: new Uint8Array(audio) },
       input.signal,
+      undefined,
+      { onUploadProgress: uploadProgress(input.onProgress ? report : undefined, 0.2) },
     ),
   );
   if (!up.success) throw new ProviderError(provider, 200, "upload answer had no upload_url");
-  input.onProgress?.(0.2);
+  report(0.2);
 
   const body: Record<string, unknown> = { audio_url: up.data.upload_url, language_detection: true };
   if (config.model) body.speech_models = [config.model];
@@ -70,7 +79,7 @@ export async function transcribeAssemblyAI(
     );
     if (!next.success) throw new ProviderError(provider, 200, "unexpected answer shape");
     job = next.data;
-    input.onProgress?.(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
+    report(Math.min(0.95, 0.2 + (Date.now() - started) / Math.max(60_000, input.info.durationSec * 300)));
   }
 
   // Times are milliseconds.
@@ -78,7 +87,7 @@ export async function transcribeAssemblyAI(
     job.utterances && job.utterances.length > 0
       ? job.utterances.map((u) => ({ start: u.start / 1000, end: u.end / 1000, text: u.text }))
       : groupWordsIntoSegments((job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text })));
-  input.onProgress?.(1);
+  report(1);
   return {
     segments: toTimeline(segments),
     language: job.language_code ?? undefined,

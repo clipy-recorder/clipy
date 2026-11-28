@@ -8,7 +8,7 @@ import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
-import { ProviderError, requestJson } from "../src/providers/http.js";
+import { ProviderError, request, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
@@ -485,5 +485,87 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+
+describe("upload progress", () => {
+  function assertStrictlyIncreasing(values: number[], minCount: number, maxAllowed: number) {
+    expect(values.length).toBeGreaterThanOrEqual(minCount);
+    for (let i = 0; i < values.length; i++) {
+      expect(values[i]).toBeGreaterThan(0);
+      expect(values[i]).toBeLessThanOrEqual(maxAllowed);
+      if (i > 0) expect(values[i]).toBeGreaterThan(values[i - 1]);
+    }
+  }
+
+  it("reports upload slices for deepgram before the answer arrives", async () => {
+    const input = await audioInput(16);
+    let beforeAnswer: number[] = [];
+    server = await fakeServer((_req, res) => {
+      beforeAnswer = [...input.progress];
+      json(res, { results: { utterances: [{ start: 0, end: 1, transcript: "Hi." }] } });
+    });
+    await transcribeDeepgram(input, { apiKey: KEY, baseUrl: server.url });
+    assertStrictlyIncreasing(beforeAnswer, 4, 0.9);
+    assertStrictlyIncreasing(input.progress, 5, 1);
+    expect(input.progress.at(-1)).toBe(1);
+  });
+
+  it("reports upload slices for elevenlabs before the answer arrives", async () => {
+    const input = await audioInput(16);
+    let beforeAnswer: number[] = [];
+    server = await fakeServer((_req, res) => {
+      beforeAnswer = [...input.progress];
+      json(res, { text: "Hi.", words: [{ text: "Hi.", start: 0, end: 1, type: "word" }] });
+    });
+    await transcribeElevenLabs(input, { apiKey: KEY, baseUrl: server.url });
+    assertStrictlyIncreasing(beforeAnswer, 4, 0.9);
+    assertStrictlyIncreasing(input.progress, 5, 1);
+    expect(input.progress.at(-1)).toBe(1);
+  });
+
+  it("reports upload slices for assemblyai before polling, never goes down, and ends at 1", async () => {
+    const input = await audioInput(16);
+    let beforeUploadAnswer: number[] = [];
+    let polls = 0;
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") {
+        beforeUploadAnswer = [...input.progress];
+        return json(res, { upload_url: "https://cdn.example/upload/big" });
+      }
+      if (req.url === "/v2/transcript" && req.method === "POST") return json(res, { id: "t-prog", status: "queued" });
+      if (req.url === "/v2/transcript/t-prog") {
+        polls++;
+        if (polls < 2) return json(res, { id: "t-prog", status: "processing" });
+        return json(res, { id: "t-prog", status: "completed", utterances: [{ text: "Hi.", start: 0, end: 900 }] });
+      }
+      json(res, {}, 404);
+    });
+    await transcribeAssemblyAI(input, { apiKey: KEY, baseUrl: server.url }, { pollIntervalMs: 5 });
+    assertStrictlyIncreasing(beforeUploadAnswer, 4, 0.2);
+    assertStrictlyIncreasing(input.progress, 5, 1);
+    expect(input.progress.at(-1)).toBe(1);
+  });
+
+  it("forwards byte progress from request() across slices", async () => {
+    const body = new Uint8Array(256 * 1024).fill(7);
+    const seen: Array<{ sent: number; total: number }> = [];
+    let beforeAnswer: Array<{ sent: number; total: number }> = [];
+    server = await fakeServer((_req, res) => {
+      beforeAnswer = [...seen];
+      json(res, { ok: true });
+    });
+    const res = await request(
+      "deepgram",
+      `${server.url}/upload`,
+      { method: "POST", body },
+      undefined,
+      { onUploadProgress: (sent, total) => seen.push({ sent, total }) },
+    );
+    await res.body?.cancel();
+    expect(beforeAnswer.length).toBe(4);
+    expect(beforeAnswer.map((x) => x.sent)).toEqual([64 * 1024, 128 * 1024, 192 * 1024, 256 * 1024]);
+    expect(beforeAnswer.every((x) => x.total === body.byteLength)).toBe(true);
   });
 });

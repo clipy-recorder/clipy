@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline, type RelativeSegment } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { uploadProgress, type AudioInput, type EngineOutput } from "./common.js";
 
 export const DEEPGRAM_BASE_URL = "https://api.deepgram.com";
 export const DEEPGRAM_DEFAULT_MODEL = "nova-3";
@@ -47,6 +47,8 @@ export async function transcribeDeepgram(
     url,
     { method: "POST", headers: { Authorization: `Token ${config.apiKey}`, "Content-Type": "audio/wav" }, body: new Uint8Array(audio) },
     input.signal,
+    undefined,
+    { onUploadProgress: uploadProgress(input.onProgress, 0.9) },
   );
   const parsed = Answer.safeParse(raw);
   if (!parsed.success) throw new ProviderError(provider, 200, "unexpected answer shape");
