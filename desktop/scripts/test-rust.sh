@@ -19,5 +19,16 @@ fi
 
 export DYLD_FALLBACK_LIBRARY_PATH="$FFMPEG_LIB_DIR${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
 
+if [ "$(uname -s)" = "Darwin" ] && ! /usr/bin/xcodebuild -version >/dev/null 2>&1; then
+  SHIM_DIR="$TAURI_DIR/target/xcodebuild-shim"
+  mkdir -p "$SHIM_DIR"
+  cat > "$SHIM_DIR/xcodebuild" <<EOF
+#!/bin/bash
+exec /bin/bash "$DESKTOP_DIR/scripts/xcodebuild-cidre-shims.sh" "\$@"
+EOF
+  chmod +x "$SHIM_DIR/xcodebuild"
+  export PATH="$SHIM_DIR:$PATH"
+fi
+
 cd "$TAURI_DIR"
 cargo test "$@"

@@ -19,9 +19,10 @@ installed side by side.
 ## Build it
 
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
-the Command Line Tools (macOS 12.3 or newer to run the app). On Windows,
-Visual Studio Build Tools with the C++ workload, and FFmpeg 7 shared
-libraries (see below).
+the Command Line Tools (macOS 12.3 or newer to run the app; with Command Line
+Tools only, `scripts/tauri-local.mjs` and `scripts/test-rust.sh` automatically
+use `scripts/xcodebuild-cidre-shims.sh`). On Windows, Visual Studio Build Tools
+with the C++ workload, and FFmpeg 7 shared libraries (see below).
 
 ```bash
 cd desktop
@@ -31,6 +32,9 @@ pnpm setup:native-deps  # macOS, once: downloads the FFmpeg framework
 pnpm tauri:dev        # run it
 pnpm tauri:build      # build the app bundle or installer
 ```
+
+On macOS, `pnpm tauri:build` writes `Clipy Local.app` and the `.dmg` installer
+under `src-tauri/target/release/bundle/`.
 
 The local edition is the default: `cargo build` and `pnpm tauri:build` need no
 feature flags, and `src-tauri/tauri.conf.json` is the local edition's config
