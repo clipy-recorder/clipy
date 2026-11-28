@@ -758,6 +758,7 @@
     "dontOpen": "Não abrir automaticamente",
     "keyMoments": "Momentos-chave",
     "transcript": "Transcrição",
+    "copyTranscript": "Copiar transcrição",
     "noSpeech": "Nenhuma fala reconhecida.",
     "transcribing": "Transcrevendo…"
   },

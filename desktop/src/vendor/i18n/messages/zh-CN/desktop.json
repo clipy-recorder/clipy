@@ -758,6 +758,7 @@
     "dontOpen": "不要自动打开",
     "keyMoments": "关键时刻",
     "transcript": "转写",
+    "copyTranscript": "复制转录文本",
     "noSpeech": "未识别到语音。",
     "transcribing": "正在转写…"
   },
