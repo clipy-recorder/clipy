@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson, sleep } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { normalizeLanguage, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com";
 
@@ -81,7 +81,7 @@ export async function transcribeAssemblyAI(
   input.onProgress?.(1);
   return {
     segments: toTimeline(segments),
-    language: job.language_code ?? undefined,
+    language: normalizeLanguage(job.language_code),
     engine: `assemblyai${config.model ? `:${config.model}` : ""}`,
     gaps: [],
   };

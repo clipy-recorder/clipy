@@ -9,6 +9,7 @@ import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
+import { normalizeLanguage } from "../src/providers/common.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
@@ -54,7 +55,7 @@ describe("openai-compatible", () => {
       { startMs: 500, endMs: 1250, text: "hello world." },
       { startMs: 1500, endMs: 2000, text: "second" },
     ]);
-    expect(r.language).toBe("english");
+    expect(r.language).toBe("en");
     expect(r.engine).toBe("openai-compatible:whisper-1");
     expect(input.progress.at(-1)).toBe(1);
 
@@ -102,6 +103,18 @@ describe("openai-compatible", () => {
     expect(server.requests[0].headers.authorization).toBeUndefined();
     // No segments: one segment over the piece.
     expect(r.segments).toEqual([{ startMs: 0, endMs: 2000, text: "just text" }]);
+  });
+
+  it("maps other language names to ISO 639-1", async () => {
+    server = await fakeServer((_req, res) => json(res, { text: "hi", language: "chinese" }));
+    const r = await transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" });
+    expect(r.language).toBe("zh");
+  });
+
+  it("leaves language out when the name is unknown", async () => {
+    server = await fakeServer((_req, res) => json(res, { text: "hi", language: "klingon" }));
+    const r = await transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" });
+    expect(r.language).toBeUndefined();
   });
 
   it("reports HTTP errors without the key or the body", async () => {
@@ -210,7 +223,7 @@ describe("assemblyai", () => {
       { startMs: 100, endMs: 3500, text: "One two." },
       { startMs: 5000, endMs: 5400, text: "Three" },
     ]);
-    expect(r.language).toBe("en_us");
+    expect(r.language).toBe("en");
     expect(r.engine).toBe("assemblyai");
     const [upload, create] = server.requests;
     expect(upload.headers.authorization).toBe(KEY);
@@ -270,7 +283,7 @@ describe("elevenlabs", () => {
       { startMs: 100, endMs: 3200, text: "Good morning." },
       { startMs: 5000, endMs: 5500, text: "Again" },
     ]);
-    expect(r.language).toBe("eng");
+    expect(r.language).toBe("en");
     expect(r.engine).toBe("elevenlabs:scribe_v2");
     const [req] = server.requests;
     expect(req.url).toBe("/v1/speech-to-text");
@@ -485,5 +498,24 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+
+describe("normalizeLanguage", () => {
+  it("maps names, 3-letter codes and region forms to ISO 639-1", () => {
+    expect(normalizeLanguage("english")).toBe("en");
+    expect(normalizeLanguage("Chinese")).toBe("zh");
+    expect(normalizeLanguage("eng")).toBe("en"); // ElevenLabs
+    expect(normalizeLanguage("en_us")).toBe("en"); // AssemblyAI
+    expect(normalizeLanguage("pt-BR")).toBe("pt"); // Deepgram style
+    expect(normalizeLanguage("de")).toBe("de"); // already ISO 639-1
+  });
+
+  it("returns undefined for empty or unknown values", () => {
+    expect(normalizeLanguage("klingon")).toBeUndefined();
+    expect(normalizeLanguage("")).toBeUndefined();
+    expect(normalizeLanguage(null)).toBeUndefined();
+    expect(normalizeLanguage(undefined)).toBeUndefined();
   });
 });

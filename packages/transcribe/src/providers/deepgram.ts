@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline, type RelativeSegment } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { normalizeLanguage, type AudioInput, type EngineOutput } from "./common.js";
 
 export const DEEPGRAM_BASE_URL = "https://api.deepgram.com";
 export const DEEPGRAM_DEFAULT_MODEL = "nova-3";
@@ -62,7 +62,7 @@ export async function transcribeDeepgram(
   input.onProgress?.(1);
   return {
     segments: toTimeline(segments),
-    language: channel?.detected_language,
+    language: normalizeLanguage(channel?.detected_language),
     engine: `deepgram:${model}`,
     gaps: [],
   };

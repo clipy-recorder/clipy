@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { normalizeLanguage, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 export const ELEVENLABS_DEFAULT_MODEL = "scribe_v2";
@@ -45,7 +45,7 @@ export async function transcribeElevenLabs(
   input.onProgress?.(1);
   return {
     segments: toTimeline(groupWordsIntoSegments(words)),
-    language: parsed.data.language_code ?? undefined,
+    language: normalizeLanguage(parsed.data.language_code),
     engine: `elevenlabs:${model}`,
     gaps: [],
   };

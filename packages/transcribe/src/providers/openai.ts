@@ -7,8 +7,7 @@
  */
 import { z } from "zod";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
-import { maxSecForBytes, runInPieces, wholePieceSegment, type AudioInput, type EngineOutput } from "./common.js";
-
+import { maxSecForBytes, normalizeLanguage, runInPieces, wholePieceSegment, type AudioInput, type EngineOutput } from "./common.js";
 /** OpenAI rejects uploads over 25 MB; stay under it with room for the form. */
 export const OPENAI_MAX_UPLOAD_BYTES = 24 * 1024 * 1024;
 
@@ -47,7 +46,7 @@ export async function transcribeOpenAICompatible(
     if (!parsed.success) throw new ProviderError(provider, 200, "unexpected answer shape");
     const segs = parsed.data.segments;
     return {
-      language: parsed.data.language,
+      language: normalizeLanguage(parsed.data.language),
       segments:
         segs && segs.length > 0
           ? segs.map((s) => ({ start: s.start, end: s.end, text: s.text }))

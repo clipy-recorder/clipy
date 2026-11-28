@@ -36,7 +36,10 @@ export interface TranscribeResult {
   segments: TranscriptSegment[];
   /** Which engine produced the segments, e.g. `local:english-fast` or `deepgram:nova-3`. */
   engine: string;
-  /** Language code when the engine reports one. */
+  /**
+   * Lowercase ISO 639-1 code of the spoken language, e.g. `en` or `zh`.
+   * Left out when the engine does not report one or it is not a known language.
+   */
   language?: string;
   /** Stretches of the recording that have no transcript, and why. */
   gaps: TranscriptGap[];

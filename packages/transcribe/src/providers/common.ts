@@ -151,3 +151,62 @@ export function wholePieceSegment(text: string, durSec: number, silences: Silenc
 export function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+
+
+// [ISO 639-1 code, ISO 639-3 code, English name]. Covers the languages Whisper can report.
+const LANGUAGES: ReadonlyArray<readonly [string, string, string]> = [
+  ["en", "eng", "english"], ["zh", "zho", "chinese"], ["de", "deu", "german"], ["es", "spa", "spanish"],
+  ["ru", "rus", "russian"], ["ko", "kor", "korean"], ["fr", "fra", "french"], ["ja", "jpn", "japanese"],
+  ["pt", "por", "portuguese"], ["tr", "tur", "turkish"], ["pl", "pol", "polish"], ["ca", "cat", "catalan"],
+  ["nl", "nld", "dutch"], ["ar", "ara", "arabic"], ["sv", "swe", "swedish"], ["it", "ita", "italian"],
+  ["id", "ind", "indonesian"], ["hi", "hin", "hindi"], ["fi", "fin", "finnish"], ["vi", "vie", "vietnamese"],
+  ["he", "heb", "hebrew"], ["uk", "ukr", "ukrainian"], ["el", "ell", "greek"], ["ms", "msa", "malay"],
+  ["cs", "ces", "czech"], ["ro", "ron", "romanian"], ["da", "dan", "danish"], ["hu", "hun", "hungarian"],
+  ["ta", "tam", "tamil"], ["no", "nor", "norwegian"], ["th", "tha", "thai"], ["ur", "urd", "urdu"],
+  ["hr", "hrv", "croatian"], ["bg", "bul", "bulgarian"], ["lt", "lit", "lithuanian"], ["la", "lat", "latin"],
+  ["mi", "mri", "maori"], ["ml", "mal", "malayalam"], ["cy", "cym", "welsh"], ["sk", "slk", "slovak"],
+  ["te", "tel", "telugu"], ["fa", "fas", "persian"], ["lv", "lav", "latvian"], ["bn", "ben", "bengali"],
+  ["sr", "srp", "serbian"], ["az", "aze", "azerbaijani"], ["sl", "slv", "slovenian"], ["kn", "kan", "kannada"],
+  ["et", "est", "estonian"], ["mk", "mkd", "macedonian"], ["br", "bre", "breton"], ["eu", "eus", "basque"],
+  ["is", "isl", "icelandic"], ["hy", "hye", "armenian"], ["ne", "nep", "nepali"], ["mn", "mon", "mongolian"],
+  ["bs", "bos", "bosnian"], ["kk", "kaz", "kazakh"], ["sq", "sqi", "albanian"], ["sw", "swa", "swahili"],
+  ["gl", "glg", "galician"], ["mr", "mar", "marathi"], ["pa", "pan", "punjabi"], ["si", "sin", "sinhala"],
+  ["km", "khm", "khmer"], ["sn", "sna", "shona"], ["yo", "yor", "yoruba"], ["so", "som", "somali"],
+  ["af", "afr", "afrikaans"], ["oc", "oci", "occitan"], ["ka", "kat", "georgian"], ["be", "bel", "belarusian"],
+  ["tg", "tgk", "tajik"], ["sd", "snd", "sindhi"], ["gu", "guj", "gujarati"], ["am", "amh", "amharic"],
+  ["yi", "yid", "yiddish"], ["lo", "lao", "lao"], ["uz", "uzb", "uzbek"], ["fo", "fao", "faroese"],
+  ["ht", "hat", "haitian creole"], ["ps", "pus", "pashto"], ["tk", "tuk", "turkmen"], ["nn", "nno", "nynorsk"],
+  ["mt", "mlt", "maltese"], ["sa", "san", "sanskrit"], ["lb", "ltz", "luxembourgish"], ["my", "mya", "myanmar"],
+  ["bo", "bod", "tibetan"], ["tl", "tgl", "tagalog"], ["mg", "mlg", "malagasy"], ["as", "asm", "assamese"],
+  ["tt", "tat", "tatar"], ["ln", "lin", "lingala"], ["ha", "hau", "hausa"], ["ba", "bak", "bashkir"],
+  ["jv", "jav", "javanese"], ["su", "sun", "sundanese"],
+];
+
+// Other names Whisper uses for the same language.
+const ALIASES: Record<string, string> = {
+  castilian: "es", valencian: "ca", flemish: "nl", burmese: "my", sinhalese: "si",
+  panjabi: "pa", pushto: "ps", letzeburgesch: "lb", moldavian: "ro", moldovan: "ro",
+};
+
+// One lookup for all three forms: "en", "eng" and "english" all give "en".
+const LOOKUP = new Map<string, string>(Object.entries(ALIASES));
+for (const [code, code3, name] of LANGUAGES) {
+  LOOKUP.set(code, code);
+  LOOKUP.set(code3, code);
+  LOOKUP.set(name, code);
+}
+
+/**
+ * Turns whatever a provider reports into a lowercase ISO 639-1 code:
+ * "english" -> "en", "eng" -> "en", "en_us" / "en-US" -> "en".
+ * Returns undefined when the value is empty or not a language we know,
+ * so the caller can leave `language` out.
+ */
+export function normalizeLanguage(value: string | null | undefined): string | undefined {
+  const key = value?.trim().toLowerCase();
+  if (!key) return undefined;
+  const direct = LOOKUP.get(key);
+  if (direct) return direct;
+  // Region forms like "en-US", "en_us", "pt-BR": keep only the language part.
+  return LOOKUP.get(key.split(/[-_]/)[0]);
+}
