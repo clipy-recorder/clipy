@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {
+      "description": "Config file format version (currently 1).",
+      "type": "number",
+      "const": 1
+    },
+    "model": {
+      "description": "Provider that reads the transcript for spoken cues. Omit or set to null for rules-only mode.",
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "preset": {
+              "type": "string",
+              "enum": [
+                "openrouter",
+                "openai",
+                "gemini",
+                "groq",
+                "ollama",
+                "lmstudio",
+                "custom"
+              ],
+              "description": "Model provider preset. Use \"custom\" for any other OpenAI-compatible endpoint."
+            },
+            "apiKey": {
+              "description": "API key for hosted presets (required for openrouter, openai, gemini, and groq).",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "model": {
+              "description": "Model identifier. Optional for hosted presets; required for ollama, lmstudio, and custom.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "baseUrl": {
+              "description": "HTTP(S) endpoint URL. Required for custom; overrides the default URL for other presets.",
+              "type": "string",
+              "format": "uri",
+              "pattern": "^\\s*https?://\\S+"
+            }
+          },
+          "required": [
+            "preset"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "transcription": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "none",
+              "description": "Disable transcription."
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "local",
+              "description": "Transcribe locally on device using downloaded models."
+            },
+            "model": {
+              "description": "Local speech model (defaults to \"english-fast\").",
+              "type": "string",
+              "enum": [
+                "english-fast",
+                "multilingual"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "openai",
+                "groq"
+              ],
+              "description": "Hosted OpenAI or Groq transcription shorthand."
+            },
+            "apiKey": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "API key for the selected transcription provider."
+            },
+            "model": {
+              "description": "Model name overriding the preset default.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "kind",
+            "apiKey"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "openai-compatible",
+              "description": "Custom OpenAI-compatible /audio/transcriptions endpoint."
+            },
+            "baseUrl": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^\\s*https?://\\S+",
+              "description": "Base HTTP(S) URL of the OpenAI-compatible server."
+            },
+            "apiKey": {
+              "description": "Optional API key if the server requires authentication.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "Model name expected by the server."
+            }
+          },
+          "required": [
+            "kind",
+            "baseUrl",
+            "model"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "deepgram",
+                "assemblyai",
+                "elevenlabs",
+                "gemini"
+              ],
+              "description": "Hosted transcription provider taking an API key."
+            },
+            "apiKey": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S",
+              "description": "API key for the transcription provider."
+            },
+            "model": {
+              "description": "Optional provider-specific model name.",
+              "type": "string",
+              "minLength": 1,
+              "pattern": "\\S"
+            }
+          },
+          "required": [
+            "kind",
+            "apiKey"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "How recordings are transcribed. Defaults to the local \"english-fast\" model."
+    }
+  },
+  "additionalProperties": {},
+  "title": "Clipy Local Configuration",
+  "description": "Settings file (config.json) for @clipy/local-config. Unknown top-level keys (such as \"$schema\") are preserved; model and transcription reject unknown keys."
+}

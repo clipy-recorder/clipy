@@ -63,6 +63,14 @@ export type StoredTranscription =
  * Unknown top-level keys are kept, so a newer version's settings survive a
  * save from an older one. Inside `model` and `transcription` unknown keys are
  * errors, which catches typos such as `apikey`.
+ *
+ * Editors such as VS Code can validate and autocomplete `config.json` when you
+ * add a top-level `"$schema"` key pointing to `config.schema.json` (generated
+ * from `storedConfigSchema` via `pnpm --filter @clipy/local-config run schema`).
+ * Because the root schema keeps unknown keys (`z.looseObject` ->
+ * `"additionalProperties": {}`), `"$schema"` is both accepted by editors and
+ * preserved by `loadConfig` / `saveConfig`, while `model` and `transcription`
+ * stay strict (`"additionalProperties": false`).
  */
 export interface StoredConfig {
   version?: 1;
@@ -81,29 +89,67 @@ export function isHttpUrl(value: string): boolean {
   }
 }
 
-const nonEmpty = z.string().trim().min(1, "must not be empty");
-const httpUrl = z.string().trim().refine(isHttpUrl, HTTP_URL_MESSAGE);
+const nonEmpty = z.string().trim().min(1, "must not be empty").meta({ pattern: "\\S" });
+const httpUrl = z
+  .string()
+  .trim()
+  .refine(isHttpUrl, HTTP_URL_MESSAGE)
+  .meta({ format: "uri", pattern: "^\\s*https?://\\S+" });
 
 const storedModelSchema = z.strictObject({
-  preset: z.enum(MODEL_PRESETS),
-  apiKey: nonEmpty.optional(),
-  model: nonEmpty.optional(),
-  baseUrl: httpUrl.optional(),
+  preset: z.enum(MODEL_PRESETS).describe("Model provider preset. Use \"custom\" for any other OpenAI-compatible endpoint."),
+  apiKey: nonEmpty.optional().describe("API key for hosted presets (required for openrouter, openai, gemini, and groq)."),
+  model: nonEmpty.optional().describe("Model identifier. Optional for hosted presets; required for ollama, lmstudio, and custom."),
+  baseUrl: httpUrl.optional().describe("HTTP(S) endpoint URL. Required for custom; overrides the default URL for other presets."),
 });
 
-const storedTranscriptionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("none") }),
-  z.strictObject({ kind: z.literal("local"), model: z.enum(LOCAL_TRANSCRIPTION_MODELS).optional() }),
-  z.strictObject({ kind: z.enum(["openai", "groq"]), apiKey: nonEmpty, model: nonEmpty.optional() }),
-  z.strictObject({ kind: z.literal("openai-compatible"), baseUrl: httpUrl, apiKey: nonEmpty.optional(), model: nonEmpty }),
-  z.strictObject({ kind: z.enum(KEYED_TRANSCRIPTION_KINDS), apiKey: nonEmpty, model: nonEmpty.optional() }),
-]);
+const storedTranscriptionSchema = z
+  .discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("none").describe("Disable transcription."),
+    }),
+    z.strictObject({
+      kind: z.literal("local").describe("Transcribe locally on device using downloaded models."),
+      model: z.enum(LOCAL_TRANSCRIPTION_MODELS).optional().describe("Local speech model (defaults to \"english-fast\")."),
+    }),
+    z.strictObject({
+      kind: z.enum(["openai", "groq"]).describe("Hosted OpenAI or Groq transcription shorthand."),
+      apiKey: nonEmpty.describe("API key for the selected transcription provider."),
+      model: nonEmpty.optional().describe("Model name overriding the preset default."),
+    }),
+    z.strictObject({
+      kind: z.literal("openai-compatible").describe("Custom OpenAI-compatible /audio/transcriptions endpoint."),
+      baseUrl: httpUrl.describe("Base HTTP(S) URL of the OpenAI-compatible server."),
+      apiKey: nonEmpty.optional().describe("Optional API key if the server requires authentication."),
+      model: nonEmpty.describe("Model name expected by the server."),
+    }),
+    z.strictObject({
+      kind: z.enum(KEYED_TRANSCRIPTION_KINDS).describe("Hosted transcription provider taking an API key."),
+      apiKey: nonEmpty.describe("API key for the transcription provider."),
+      model: nonEmpty.optional().describe("Optional provider-specific model name."),
+    }),
+  ])
+  .describe("How recordings are transcribed. Defaults to the local \"english-fast\" model.");
 
-export const storedConfigSchema = z.looseObject({
-  version: z.literal(1).optional(),
-  model: storedModelSchema.nullable().optional(),
-  transcription: storedTranscriptionSchema.optional(),
-});
+export const storedConfigSchema = z
+  .looseObject({
+    version: z.literal(1).optional().describe("Config file format version (currently 1)."),
+    model: storedModelSchema
+      .nullable()
+      .optional()
+      .describe("Provider that reads the transcript for spoken cues. Omit or set to null for rules-only mode."),
+    transcription: storedTranscriptionSchema.optional(),
+  })
+  .meta({
+    title: "Clipy Local Configuration",
+    description:
+      "Settings file (config.json) for @clipy/local-config. Unknown top-level keys (such as \"$schema\") are preserved; model and transcription reject unknown keys.",
+  });
+
+/** Generate the Draft 2020-12 JSON Schema for `config.json` from `storedConfigSchema`. */
+export function buildConfigJsonSchema(): Record<string, unknown> {
+  return z.toJSONSchema(storedConfigSchema) as Record<string, unknown>;
+}
 
 /**
  * One line per problem, naming the field. Zod issues here never carry the

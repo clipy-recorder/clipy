@@ -13,7 +13,8 @@
     "pretypecheck": "node scripts/ensure-moments-source.mjs",
     "typecheck": "tsc -p tsconfig.check.json",
     "pretest": "node scripts/ensure-moments-source.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "schema": "node scripts/generate-schema.mjs"
   },
   "dependencies": {
     "@clipy/moments": "workspace:*",
