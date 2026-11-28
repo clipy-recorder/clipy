@@ -133,8 +133,17 @@ describe("parseSourceId", () => {
     expect(parseSourceId("window:27262979")).toEqual({ kind: "window", id: 27262979 });
   });
 
+  it("reads both prefixes in any case", () => {
+    expect(parseSourceId("DISPLAY:1")).toEqual({ kind: "display", index: 1 });
+    expect(parseSourceId("Display:1")).toEqual({ kind: "display", index: 1 });
+    expect(parseSourceId("WINDOW:0x1a")).toEqual({ kind: "window", id: 0x1a });
+    expect(parseSourceId("Window:0X1A")).toEqual({ kind: "window", id: 0x1a });
+  });
+
   it("rejects anything else", () => {
     expect(() => parseSourceId("screen-1")).toThrow(/unknown capture source/);
+    expect(() => parseSourceId("display:")).toThrow(/unknown capture source/);
+    expect(() => parseSourceId("window:0xzz")).toThrow(/unknown capture source/);
   });
 });
 
