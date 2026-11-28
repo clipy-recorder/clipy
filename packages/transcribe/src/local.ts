@@ -63,7 +63,21 @@ export class ModelNotInstalledError extends Error {
   }
 }
 
-function recognizerConfig(model: LocalModelId, dir: string, threads: number): unknown {
+/**
+ * Resolve the thread count for on-device transcription. Defaults to
+ * `max(1, min(4, floor(available / 2)))`; an explicit count must be an integer
+ * from 1 to `available`.
+ */
+export function resolveThreads(threads?: number, available = availableParallelism()): number {
+  const limit = Math.max(1, available);
+  if (threads === undefined) return Math.max(1, Math.min(4, Math.floor(limit / 2)));
+  if (!Number.isInteger(threads) || threads < 1 || threads > limit) {
+    throw new RangeError(`threads must be an integer from 1 to ${limit} (got ${threads})`);
+  }
+  return threads;
+}
+
+export function recognizerConfig(model: LocalModelId, dir: string, threads: number): unknown {
   const p = modelFilePaths(model, dir);
   const common = { tokens: p["tokens.txt"], numThreads: threads, provider: "cpu", debug: 0 };
   return {
@@ -174,7 +188,9 @@ export async function transcribeLocal(
   model: LocalModelId,
   modelDir?: string,
   speechEngine?: string,
+  threads?: number,
 ): Promise<EngineOutput> {
+  const numThreads = resolveThreads(threads);
   const status = modelStatus(model, modelDir);
   if (!status.installed) throw new ModelNotInstalledError(model);
   const engine = resolveEngine(speechEngine);
@@ -197,9 +213,8 @@ export async function transcribeLocal(
   const quiet = input.noSpeech ? await input.noSpeech() : [];
   const withSpeech = plan.filter((p) => !noSpeech.has(p.index)).map((p) => trimPieceToSpeech(p, quiet));
 
-  const threads = Math.max(1, Math.min(4, Math.floor(availableParallelism() / 2)));
   const job: Job = {
-    config: recognizerConfig(model, status.dir, threads),
+    config: recognizerConfig(model, status.dir, numThreads),
     engine,
     wav: { path: input.wavPath, dataOffset: input.info.dataOffset, dataBytes: input.info.dataBytes, sampleRate: input.info.sampleRate },
   };

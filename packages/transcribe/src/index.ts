@@ -12,7 +12,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { extractAudio, NoAudioTrackError, probeMedia, readWavInfo, throwIfAborted } from "./audio.js";
-import { transcribeLocal } from "./local.js";
+import { resolveThreads, transcribeLocal } from "./local.js";
 import { transcribeAssemblyAI } from "./providers/assemblyai.js";
 import { audioInputFor, type AudioInput, type EngineOutput } from "./providers/common.js";
 import { transcribeDeepgram } from "./providers/deepgram.js";
@@ -32,13 +32,14 @@ export type {
 } from "./types.js";
 export { extractAudio, NoAudioTrackError } from "./audio.js";
 export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, type LocalModel, type ModelFile } from "./models.js";
-export { ModelNotInstalledError } from "./local.js";
+export { ModelNotInstalledError, resolveThreads } from "./local.js";
 export { ProviderError } from "./providers/http.js";
 
 /** Transcribe a video or audio file. The audio is extracted to a temporary folder that is always removed. */
 export async function transcribe(inputPath: string, config: TranscriptionConfig, options: TranscribeOptions = {}): Promise<TranscribeResult> {
   const { signal, onProgress } = options;
   throwIfAborted(signal);
+  if (options.threads !== undefined) resolveThreads(options.threads);
   onProgress?.({ stage: "extract", fraction: 0 });
   // Nothing to extract: only the length is needed (and a video-only file has no audio to extract).
   if (config.kind === "none") {
@@ -81,7 +82,7 @@ function wholeFileGap(totalMs: number, reason: string): TranscriptGap[] {
 function runEngine(input: AudioInput, config: Exclude<TranscriptionConfig, { kind: "none" }>, options: TranscribeOptions): Promise<EngineOutput> {
   switch (config.kind) {
     case "local":
-      return transcribeLocal(input, config.model, options.modelDir, options.speechEngine);
+      return transcribeLocal(input, config.model, options.modelDir, options.speechEngine, options.threads);
     case "openai-compatible":
       return transcribeOpenAICompatible(input, config);
     case "deepgram":
