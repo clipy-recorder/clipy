@@ -82,7 +82,13 @@ export class NoAudioTrackError extends Error {
   }
 }
 
-const DURATION_RE = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
+/**
+ * The container's own duration line, indented exactly two spaces. Metadata is
+ * printed before it and indented further, even on a value's continuation
+ * lines, so a title that mentions a duration cannot match. No `m` flag: its
+ * `^` would also match after a U+2028 inside a title.
+ */
+const DURATION_RE = /(?:^|\n) {2}Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/;
 
 /**
  * How long a media file is and whether it has audio, from ffmpeg's header
