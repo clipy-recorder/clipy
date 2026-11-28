@@ -134,6 +134,7 @@ test("Windows stages DLLs on a clean checkout, excluding executables", (t) => {
   writeFileSync(path.join(bin, "avutil-59.dll"), "first");
   writeFileSync(path.join(bin, "avcodec-61.dll"), "codec");
   writeFileSync(path.join(bin, "ffmpeg.exe"), "exe");
+  mkdirSync(path.join(bin, "unused.dll"));
   const result = run("win32");
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(readdirSync(dest).sort(), ["avcodec-61.dll", "avutil-59.dll"]);
@@ -163,10 +164,15 @@ test("failed FFmpeg restaging keeps previously staged DLLs until a successful re
 });
 
 test("Windows rejects missing FFmpeg configuration and empty shared builds", (t) => {
-  const { root, run } = fixture(t);
+  const { root, bin, run } = fixture(t);
+  const malformed = path.join(root, "malformed");
+  mkdirSync(malformed);
+  writeFileSync(path.join(malformed, "bin"), "not a directory");
+  mkdirSync(path.join(bin, "unused.dll"));
   for (const [dir, message] of [
     ["", /FFMPEG_DIR is not set/],
     [path.join(root, "missing"), /no bin directory/],
+    [malformed, /no bin directory/],
     [path.join(root, "ffmpeg"), /no DLLs/],
   ]) {
     const result = run("win32", dir);

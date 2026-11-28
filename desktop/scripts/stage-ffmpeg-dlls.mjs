@@ -16,7 +16,7 @@
  * No-op on non-Windows.
  */
 
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { env, exit, platform } from "node:process";
@@ -41,14 +41,14 @@ if (!ffmpegDir) {
 }
 
 const binDir = path.join(ffmpegDir, "bin");
-if (!existsSync(binDir)) {
+if (!statSync(binDir, { throwIfNoEntry: false })?.isDirectory()) {
   console.error(`[stage-ffmpeg-dlls] no bin directory at ${binDir}`);
   exit(1);
 }
 
-mkdirSync(DEST, { recursive: true });
-
-const dlls = readdirSync(binDir).filter((f) => f.toLowerCase().endsWith(".dll"));
+const dlls = readdirSync(binDir).filter((name) =>
+  name.toLowerCase().endsWith(".dll") && statSync(path.join(binDir, name)).isFile()
+);
 if (dlls.length === 0) {
   console.error(
     `[stage-ffmpeg-dlls] no DLLs in ${binDir}.\n` +
@@ -57,6 +57,7 @@ if (dlls.length === 0) {
   exit(1);
 }
 
+mkdirSync(DEST, { recursive: true });
 let bytes = 0;
 for (const dll of dlls) {
   const from = path.join(binDir, dll);
