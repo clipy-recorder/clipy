@@ -7,7 +7,7 @@ import { transcribe } from "../src/index.js";
 import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
-import { transcribeGemini } from "../src/providers/gemini.js";
+import { GeminiTranscript, transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
@@ -341,6 +341,28 @@ describe("gemini", () => {
   it("reports HTTP errors safely", async () => {
     server = await fakeServer((_req, res) => json(res, { error: { message: SECRET_TEXT } }, 400));
     await expectSafeError(transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }), "gemini", 400);
+  });
+
+  it("rejects blank times and empty parts in time strings", () => {
+    for (const bad of ["", " ", "1:", ":30", "1::5", " : "]) {
+      const parsed = GeminiTranscript.safeParse({ segments: [{ start: bad, end: 2, text: "x" }] });
+      expect(parsed.success, `expected ${JSON.stringify(bad)} to fail`).toBe(false);
+    }
+
+    // Valid forms keep working
+    const valid = GeminiTranscript.safeParse({
+      segments: [
+        { start: 12, end: 13, text: "a" },
+        { start: "12.5s", end: 14, text: "b" },
+        { start: "1:02.5", end: 65, text: "c" },
+        { start: "01:00:00", end: 3605, text: "d" },
+        { start: " 3 ", end: 4, text: "e" },
+      ],
+    });
+    expect(valid.success).toBe(true);
+    if (valid.success) {
+      expect(valid.data.segments.map((s) => s.start)).toEqual([12, 12.5, 62.5, 3600, 3]);
+    }
   });
 });
 

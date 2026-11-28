@@ -36,8 +36,17 @@ const RESPONSE_SCHEMA = {
 /** Seconds as a number, or "SS", "MM:SS", "HH:MM:SS(.ms)" strings the model sometimes writes. */
 const Seconds = z.preprocess((v) => {
   if (typeof v !== "string") return v;
-  const parts = v.trim().replace(/s$/, "").split(":").map(Number);
-  if (parts.length === 0 || parts.length > 3 || parts.some((p) => !Number.isFinite(p))) return v;
+  const s = v.trim().replace(/s$/, "");
+  const rawParts = s.split(":");
+  if (rawParts.length === 0 || rawParts.length > 3) return v;
+  const parts: number[] = [];
+  for (const raw of rawParts) {
+    const trimmed = raw.trim();
+    if (trimmed === "") return v;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) return v;
+    parts.push(n);
+  }
   return parts.reduce((acc, p) => acc * 60 + p, 0);
 }, z.number().finite().nonnegative());
 
