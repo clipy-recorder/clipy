@@ -7,9 +7,9 @@
   "scripts": {
     "sync": "node scripts/sync-from-monorepo.mjs",
     "build": "pnpm -r run build",
-    "test": "pnpm -r run test && node scripts/plugin-pins.test.mjs",
+    "test": "pnpm -r run test && node scripts/plugin-pins.test.mjs && node --test scripts/plugin-marketplace.test.mjs",
     "typecheck": "pnpm -r run typecheck",
-    "test:plugins": "node scripts/plugin-pins.test.mjs"
+    "test:plugins": "node scripts/plugin-pins.test.mjs && node --test scripts/plugin-marketplace.test.mjs"
   },
   "packageManager": "pnpm@10.18.0",
   "devDependencies": {
