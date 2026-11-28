@@ -160,14 +160,15 @@ export async function probe(path: string, run: Runner = realRunner, env: NodeJS.
 const encoderCache = new Map<string, { encoder: H264Encoder | null; devices: string }>();
 
 async function ffmpegFeatures(ffmpeg: string, platform: Platform, env: NodeJS.ProcessEnv): Promise<{ encoder: H264Encoder | null; devices: string }> {
-  const cached = encoderCache.get(ffmpeg);
+  const key = `${platform}:${ffmpeg}`;
+  const cached = encoderCache.get(key);
   if (cached) return cached;
   const [encoders, devices] = await Promise.all([
     realRunner(ffmpeg, ["-hide_banner", "-encoders"], env),
     realRunner(ffmpeg, ["-hide_banner", "-devices"], env),
   ]);
   const features = { encoder: pickH264Encoder(encoders.stdout + encoders.stderr, platform), devices: devices.stdout + devices.stderr };
-  encoderCache.set(ffmpeg, features);
+  encoderCache.set(key, features);
   return features;
 }
 
