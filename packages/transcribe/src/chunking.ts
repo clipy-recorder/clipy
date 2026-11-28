@@ -17,8 +17,11 @@ export interface SilenceSpan {
   endSec: number;
 }
 
-const START_RE = /silence_start:\s*(-?[0-9.]+)/;
-const END_RE = /silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)/;
+// ffmpeg prints silencedetect times with %g, so a small value comes out in
+// exponent notation (`6.25e-05`) and a very large one as `1e+06`.
+const NUM = String.raw`-?[0-9.]+(?:[eE][-+]?[0-9]+)?`;
+const START_RE = new RegExp(String.raw`silence_start:\s*(${NUM})`);
+const END_RE = new RegExp(String.raw`silence_end:\s*(${NUM})\s*\|\s*silence_duration:\s*(${NUM})`);
 
 /**
  * Parse ffmpeg `silencedetect` stderr. A silence still open at the end of the

@@ -47,6 +47,33 @@ describe("parseSilencedetectOutput", () => {
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
   });
+
+  // ffmpeg prints these times with %g, so values under 1e-4 use exponent notation.
+  it("reads a silence_start in exponent notation", () => {
+    const spans = parseSilencedetectOutput("silence_start: 1.5e-05\nsilence_end: 2.5 | silence_duration: 2.49998");
+    expect(spans).toHaveLength(1);
+    expect(spans[0].startSec).toBeCloseTo(0.000015, 9);
+    expect(spans[0].endSec).toBe(2.5);
+  });
+
+  it("clamps a negative silence_start in exponent notation to 0", () => {
+    const out = "silence_start: -6.25e-05\nsilence_end: 0.5 | silence_duration: 0.5000625";
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 0, endSec: 0.5 }]);
+  });
+
+  it("reads silence_end and silence_duration in exponent notation", () => {
+    // No start line: the start is the end minus the duration.
+    const out = "silence_end: 8e-05 | silence_duration: 5e-05";
+    const spans = parseSilencedetectOutput(out);
+    expect(spans).toHaveLength(1);
+    expect(spans[0].startSec).toBeCloseTo(0.00003, 9);
+    expect(spans[0].endSec).toBeCloseTo(0.00008, 9);
+  });
+
+  it("reads a positive exponent", () => {
+    const out = "silence_start: 1e+06\nsilence_end: 1.00001e+06 | silence_duration: 10";
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 1_000_000, endSec: 1_000_010 }]);
+  });
 });
 
 describe("planChunks", () => {
