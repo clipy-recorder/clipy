@@ -2,8 +2,8 @@
 import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson } from "./http.js";
-import { groupWordsIntoSegments, toTimeline, type RelativeSegment } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
+import { wholePieceSegment, type AudioInput, type EngineOutput } from "./common.js";
 
 export const DEEPGRAM_BASE_URL = "https://api.deepgram.com";
 export const DEEPGRAM_DEFAULT_MODEL = "nova-3";
@@ -51,13 +51,17 @@ export async function transcribeDeepgram(
   const parsed = Answer.safeParse(raw);
   if (!parsed.success) throw new ProviderError(provider, 200, "unexpected answer shape");
   const channel = parsed.data.results.channels?.[0];
-  let segments: RelativeSegment[];
-  const utterances = parsed.data.results.utterances;
-  if (utterances && utterances.length > 0) {
-    segments = utterances.map((u) => ({ start: u.start, end: u.end, text: u.transcript }));
-  } else {
-    const words = channel?.alternatives?.[0]?.words ?? [];
+  const alternative = channel?.alternatives?.[0];
+  const utterances = parsed.data.results.utterances ?? [];
+  let segments = utterances
+    .filter((u) => u.transcript.trim())
+    .map((u) => ({ start: u.start, end: u.end, text: u.transcript }));
+  if (segments.length === 0) {
+    const words = alternative?.words ?? [];
     segments = groupWordsIntoSegments(words.map((w) => ({ start: w.start, end: w.end, text: w.punctuated_word ?? w.word })));
+  }
+  if (segments.length === 0) {
+    segments = wholePieceSegment(alternative?.transcript ?? "", input.info.durationSec);
   }
   input.onProgress?.(1);
   return {
