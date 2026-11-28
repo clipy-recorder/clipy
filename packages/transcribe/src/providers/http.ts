@@ -78,13 +78,19 @@ async function send(provider: string, url: string, init: RequestInit, signal: Ab
   const clock = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let waiting = false;
+  let finished = false;
   const arm = (ms: number, answerWait: boolean) => {
+    // Fetch can still pull from the upload after an early reply or network error.
+    if (finished) return;
     clearTimeout(timer);
     waiting = answerWait;
     timer = setTimeout(() => clock.abort(), ms);
   };
   const bump = () => arm(idleMs, false);
-  const done = () => clearTimeout(timer);
+  const done = () => {
+    finished = true;
+    clearTimeout(timer);
+  };
   const combined = signal ? AbortSignal.any([signal, clock.signal]) : clock.signal;
   const timeoutError = () => {
     if (!clock.signal.aborted || signal?.aborted) return null;
