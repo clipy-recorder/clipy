@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { detectSilences, extractAudio, readWavInfo, readWavSlice } from "../src/audio.js";
+import { detectSilences, extractAudio, probeMedia, readWavInfo, readWavSlice } from "../src/audio.js";
 import { transcribe } from "../src/index.js";
 import { tempDir } from "./helpers.js";
 
@@ -61,6 +61,18 @@ describe("extractAudio", () => {
     const ac = new AbortController();
     ac.abort();
     await expect(extractAudio(video, join(dir, "z.wav"), ac.signal)).rejects.toThrow(/cancelled/);
+  });
+});
+
+describe("probeMedia", () => {
+  it.each([
+    ["on one line", "Demo - Duration: 00:42:00.00"],
+    ["on its own line", "Demo\n  Duration: 00:42:00.00"],
+    ["after a Unicode line separator", "Demo\u2028  Duration: 00:42:00.00"],
+  ])("ignores a duration written in the title %s", async (_name, title) => {
+    const titled = join(dir, "titled.mkv");
+    ff(["-f", "lavfi", "-i", "color=s=64x64:r=10:d=1", "-c:v", "mpeg4", "-metadata", `title=${title}`, titled]);
+    expect((await probeMedia(titled)).durationSec).toBe(1);
   });
 });
 
