@@ -268,6 +268,33 @@ describe("saveConfig", () => {
     expect(readFileSync(file, "utf8")).toBe(before);
   });
 });
+describe("UTF-8 BOM", () => {
+  it("loads a config file with a UTF-8 BOM", () => {
+    writeConfig('\uFEFF{"model":{"preset":"openrouter","apiKey":"sk-test"}}');
+
+    const config = loadConfig(env);
+
+    expect(config.model).toMatchObject({
+      apiKey: "sk-test",
+      baseUrl: "https://openrouter.ai/api/v1",
+    });
+  });
+
+  it("updates a BOM-prefixed file and saves it without a BOM", () => {
+    writeConfig('\uFEFF{"futureSetting":{"enabled":true}}');
+
+    saveConfig({ transcription: { kind: "none" } }, env);
+
+    const savedText = readFileSync(file, "utf8");
+
+    expect(savedText.startsWith("\uFEFF")).toBe(false);
+    expect(JSON.parse(savedText)).toEqual({
+      version: 1,
+      transcription: { kind: "none" },
+      futureSetting: { enabled: true },
+    });
+  });
+});
 
 describe("a malformed file", () => {
   it("names the file and position for bad JSON, without quoting it", () => {

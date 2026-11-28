@@ -102,6 +102,8 @@ function readStored(path: string): StoredFile {
     if (code === "ENOENT") return {};
     throw new ConfigError(`Cannot read the config file ${path} (${code ?? "unknown error"}).`);
   }
+  // Remove a UTF-8 BOM if present at the beginning of the file.
+  text = text.replace(/^\uFEFF/, "");
   if (!text.trim()) return {};
 
   let raw: unknown;
