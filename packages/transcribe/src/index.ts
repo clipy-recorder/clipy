@@ -34,6 +34,7 @@ export { extractAudio, NoAudioTrackError } from "./audio.js";
 export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, type LocalModel, type ModelFile } from "./models.js";
 export { ModelNotInstalledError } from "./local.js";
 export { ProviderError } from "./providers/http.js";
+export { toSrt, toVtt, formatSrtTimestamp, formatVttTimestamp } from "./subtitles.js";
 
 /** Transcribe a video or audio file. The audio is extracted to a temporary folder that is always removed. */
 export async function transcribe(inputPath: string, config: TranscriptionConfig, options: TranscribeOptions = {}): Promise<TranscribeResult> {
