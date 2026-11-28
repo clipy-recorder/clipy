@@ -10,10 +10,11 @@ import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
-import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
+import { audioInput, fakeServer, formData, hasCommand, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
 const SECRET_TEXT = "the-secret-transcript-words";
+const hasFfmpeg = hasCommand("ffmpeg", "-version");
 
 let server: FakeServer | null = null;
 afterEach(async () => {
@@ -109,7 +110,7 @@ describe("openai-compatible", () => {
     await expectSafeError(transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }), "openai-compatible", 401);
   });
 
-  it("works end to end through transcribe() from a media file", async () => {
+  it.skipIf(!hasFfmpeg)("works end to end through transcribe() from a media file", async () => {
     server = await fakeServer((_req, res) => json(res, { language: "en", segments: [{ start: 0, end: 1, text: "ok" }] }));
     const dir = tempDir();
     const media = join(dir, "tone.m4a");
