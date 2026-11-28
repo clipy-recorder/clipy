@@ -174,13 +174,14 @@ export async function listAvfoundation(run: Runner = realRunner, env: NodeJS.Pro
 export function parseDshowAudioDevices(text: string): string[] {
   const out: string[] = [];
   let legacyAudio = false;
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     if (/DirectShow audio devices/i.test(line)) legacyAudio = true;
     else if (/DirectShow video devices/i.test(line)) legacyAudio = false;
     if (/Alternative name/i.test(line)) continue;
-    const tagged = /\]\s+"(.+)"\s+\((audio|video|none)\)\s*$/.exec(line);
+    const tagged = /\]\s+"(.+)"\s+\(([^()]+)\)\s*$/.exec(line);
     if (tagged) {
-      if (tagged[2] === "audio") out.push(tagged[1]);
+      const types = tagged[2].split(",").map((t) => t.trim().toLowerCase());
+      if (types.includes("audio")) out.push(tagged[1]);
       continue;
     }
     const legacy = /\]\s+"(.+)"\s*$/.exec(line);

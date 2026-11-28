@@ -105,6 +105,27 @@ describe("Windows parsers", () => {
   it("reads dshow audio devices in the older sectioned format", () => {
     expect(parseDshowAudioDevices(DSHOW_LEGACY)).toEqual(["Microphone (USB Audio)"]);
   });
+  
+  it("lists multi-type dshow devices offering audio alongside video, with CRLF output", () => {
+    const crlfOutput = [
+      '[dshow @ 0000020b8f6f5a40] "Integrated Camera" (video)',
+      '[dshow @ 0000020b8f6f5a40]   Alternative name "@device_pnp_\\\\?\\usb#vid_04f2"',
+      '[dshow @ 0000020b8f6f5a40] "Cam Link 4K" (audio, video)',
+      '[dshow @ 0000020b8f6f5a40]   Alternative name "@device_pnp_\\\\?\\usb#vid_0fd9"',
+      '[dshow @ 0000020b8f6f5a40] "USB Capture HDMI" (video, audio)',
+      '[dshow @ 0000020b8f6f5a40]   Alternative name "@device_pnp_\\\\?\\usb#vid_2935"',
+      '[dshow @ 0000020b8f6f5a40] "Mystery Device" (unknown)',
+      '[dshow @ 0000020b8f6f5a40] "Virtual Null" (none)',
+      '[dshow @ 0000020b8f6f5a40] "Microphone Array (Realtek(R) Audio)" (audio)',
+      "dummy: Immediate exit requested",
+    ].join("\r\n");
+
+    expect(parseDshowAudioDevices(crlfOutput)).toEqual([
+      "Cam Link 4K",
+      "USB Capture HDMI",
+      "Microphone Array (Realtek(R) Audio)",
+    ]);
+  });
 
   it("reads the screens line, as an array or a single object", () => {
     const two = parseScreensLine(
