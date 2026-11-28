@@ -128,15 +128,26 @@ describe("parseSourceId", () => {
     expect(parseSourceId("1")).toEqual({ kind: "display", index: 1 });
   });
 
+  it("parses display IDs case-insensitively", () => {
+    expect(parseSourceId("DISPLAY:2")).toEqual({ kind: "display", index: 2 });
+    expect(parseSourceId("Display:1")).toEqual({ kind: "display", index: 1 });
+  });
+
+  it("parses window IDs case-insensitively", () => {
+    expect(parseSourceId("WINDOW:0x1a")).toEqual({ kind: "window", id: 26 });
+    expect(parseSourceId("Window:0x1a")).toEqual({ kind: "window", id: 26 });
+  });
+
   it("reads window ids in hex or decimal", () => {
     expect(parseSourceId("window:0x1a00003")).toEqual({ kind: "window", id: 0x1a00003 });
     expect(parseSourceId("window:27262979")).toEqual({ kind: "window", id: 27262979 });
   });
 
-  it("rejects anything else", () => {
+    it("rejects anything else", () => {
     expect(() => parseSourceId("screen-1")).toThrow(/unknown capture source/);
   });
 });
+
 
 /** A fake runner answering by command name. */
 function fakeRunner(answers: Record<string, Partial<RunResult>>): Runner {
