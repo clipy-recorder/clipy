@@ -103,7 +103,16 @@ node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.m
 pnpm tauri:dev                    # run the desktop app
 ```
 
-The crates in `desktop/src-tauri/crates/` have their own `cargo test`.
+The Rust test script (`bash scripts/test-rust.sh --locked --lib`) is macOS-only: it needs the FFmpeg framework installed by `pnpm setup:native-deps`. Do not run it on Linux or Windows.
+
+The three local crates can be tested on macOS and Linux with:
+
+```bash
+(cd src-tauri/crates/clipy-local-edition && cargo test --locked)
+(cd src-tauri/crates/clipy-local-moments && cargo test --locked)
+(cd src-tauri/crates/clipy-local-stt && cargo test --locked --no-default-features)
+```
+On Windows, CI currently builds the desktop app with `pnpm run build` and runs `cargo check --locked` after staging the required native dependencies. The macOS-only Rust test script is not supported on Windows.
 
 ## Pull requests
 

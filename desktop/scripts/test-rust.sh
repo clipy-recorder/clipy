@@ -1,5 +1,13 @@
+
 #!/usr/bin/env bash
 set -euo pipefail
+
+# This script requires the macOS FFmpeg framework.
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "This Rust test script is supported only on macOS." >&2
+  echo "On Linux or Windows, run the individual crate tests instead." >&2
+  exit 1
+fi
 
 DESKTOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAURI_DIR="$DESKTOP_DIR/src-tauri"
