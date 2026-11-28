@@ -2351,6 +2351,7 @@ fn place_cursor_trail_window<R: Runtime>(
                 .map_err(|e| format!("cursor trail position: {e}"))?;
         }
         window.set_focusable(false).map_err(|e| e.to_string())?;
+        #[cfg(not(target_os = "linux"))]
         crate::cursor_track::set_ignore_cursor_events(&window, true)
             .map_err(|e| format!("cursor trail cursor events: {e}"))?;
         window
@@ -2380,6 +2381,9 @@ fn place_cursor_trail_window<R: Runtime>(
         window
             .show()
             .map_err(|e| format!("cursor trail show: {e}"))?;
+        #[cfg(target_os = "linux")]
+        crate::cursor_track::set_ignore_cursor_events(&window, true)
+            .map_err(|e| format!("cursor trail cursor events: {e}"))?;
         Ok(())
     })
 }

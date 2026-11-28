@@ -34,6 +34,8 @@ tauri-build = { version = "2", features = [] }
 [target.'cfg(target_os = "macos")'.build-dependencies]
 cc = "1"
 
+
+
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "macos-private-api", "protocol-asset"] }
 tauri-plugin-shell = "2"
@@ -43,6 +45,8 @@ tauri-plugin-store = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png"] }
+
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util", "process", "time", "net"] }
 anyhow = "1"
 thiserror = "2"
@@ -117,7 +121,6 @@ clipy-local-edition = { path = "crates/clipy-local-edition", optional = true }
 security-framework = "3"
 cap-camera = { git = "https://github.com/CapSoftware/Cap", rev = "52b0acc85570abf77748fe5533a42fbc0f2de556", package = "cap-camera" }
 cap-camera-ffmpeg = { git = "https://github.com/CapSoftware/Cap", rev = "52b0acc85570abf77748fe5533a42fbc0f2de556", package = "cap-camera-ffmpeg" }
-image = { version = "0.25", default-features = false, features = ["bmp", "jpeg", "png"] }
 # Camera preview socket (`camera_preview_ws.rs`), the transport Cap uses for
 # its camera window.
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
@@ -208,7 +211,6 @@ windows = { version = "0.58", features = [
     # Clipboard history pastes into the previous window with SendInput.
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
-image = { version = "0.25", default-features = false, features = ["bmp", "png", "jpeg"] }
 # Expired local recordings go to the Recycle Bin, as macOS sends them to the
 # Trash: recoverable, never silently gone.
 trash = "5"
