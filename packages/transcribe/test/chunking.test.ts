@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   groupTokensIntoSegments,
   groupWordsIntoSegments,
@@ -46,6 +46,21 @@ describe("parseSilencedetectOutput", () => {
       { startSec: 9, endSec: 10 },
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
+  });
+
+  it("handles timestamps in scientific notation", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 6.25e-05",
+      "[silencedetect @ 0x1] silence_end: 3.99994e-01 | silence_duration: 3.99988e-01",
+      "[silencedetect @ 0x1] silence_start: 1.2E+1",
+      "[silencedetect @ 0x1] silence_end: 1.3E+1 | silence_duration: 1.0E+0",
+    ].join("\n");
+    const spans = parseSilencedetectOutput(out);
+    expect(spans).toHaveLength(2);
+    expect(spans[0].startSec).toBeCloseTo(0.0000625);
+    expect(spans[0].endSec).toBeCloseTo(0.399994);
+    expect(spans[1].startSec).toBeCloseTo(12);
+    expect(spans[1].endSec).toBeCloseTo(13);
   });
 });
 
