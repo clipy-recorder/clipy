@@ -287,6 +287,24 @@ Each command ends by printing the path of the take's `recording.arec`, which
 the agent then reads. `--json` prints the result as JSON instead. The first
 take an agent starts asks for your consent in the app.
 
+## Try the moment planner
+
+`examples/plan-moments.mjs` runs the moment planner on the sample recording in
+`packages/moments/test/fixtures/flare-sample.json`. It uses no model provider,
+so nothing leaves your machine and no key is needed. It prints each moment's
+time, source and caption (the planner calls the caption `reason`).
+
+```bash
+pnpm install
+pnpm build
+node examples/plan-moments.mjs
+```
+
+On the sample you get the hold-Control highlight (`flare`) at 00:20.223 and
+the clicks. The script builds the planner input the same way
+`packages/moments/test/planMoments.test.ts` does, so it is the shortest way to
+see how `planMoments` is called.
+
 ## What is in this repository
 
 | Path | What it does |
