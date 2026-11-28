@@ -138,7 +138,7 @@ export function cloudPrompt(id: string): string {
     '(an AREC document: the timestamped transcript, summary and key moments, each with a screenshot link), ' +
     `and open ${CLIPY}/video/${id} if you need the video. ` +
     'If the link asks for sign-in, read it with the Clipy CLI and the CLIPY_API_KEY in this environment: ' +
-    `npx -y @clipy/cli@0.22.0 context ${id}. ` +
+    `npx -y @clipy/cli@0.21.0 context ${id}. ` +
     "Look at the screenshots that matter, then do what I asked in it. If it isn't clear, summarize what you saw and ask."
   )
 }

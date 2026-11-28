@@ -3,7 +3,7 @@ name: watch
 description: Watch a YouTube video, a Loom link or a video file for the user and answer questions about it with timestamps. Use whenever the user shares a YouTube URL, a Loom share link or a path to a video file, or asks you to watch, summarize, take notes on or follow along with a video ("watch this", "what does this video say", "implement what this video shows").
 argument-hint: "<YouTube URL | Loom link | path to a video file> [question]"
 tags: [video, youtube, loom, transcript, arec, claude-code]
-allowed-tools: Read, Bash(command -v clipy), Bash(clipy context import *), Bash(clipy context read *), Bash(clipy local status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.22.0 context import *), Bash(npx -y @clipy/cli@0.22.0 context read *), Bash(npx -y @clipy/cli@0.22.0 local status*), Bash(npx -y @clipy/cli@0.22.0 doctor*)
+allowed-tools: Read, Bash(command -v clipy), Bash(clipy context import *), Bash(clipy context read *), Bash(clipy local status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.21.0 context import *), Bash(npx -y @clipy/cli@0.21.0 context read *), Bash(npx -y @clipy/cli@0.21.0 local status*), Bash(npx -y @clipy/cli@0.21.0 doctor*)
 ---
 
 # Watch a video
@@ -27,7 +27,7 @@ plain Markdown, written to a folder on this machine. AREC is an open format
 ## 1. Find the CLI
 
 Run `command -v clipy`. If it prints a path, use `clipy` in the commands
-below. If it prints nothing, use `npx -y @clipy/cli@0.22.0` in place of
+below. If it prints nothing, use `npx -y @clipy/cli@0.21.0` in place of
 `clipy` (it needs Node.js 18.17 or later). Do not install anything globally
 without asking; mention that `npm i -g @clipy/cli` makes later runs faster.
 
@@ -62,7 +62,7 @@ clipy local status
 
 If it prints `unknown command: local`, this copy of the Clipy CLI has no
 on-device transcription. If `clipy` is a global install, ask the user before
-running `npm i -g @clipy/cli`, or use `npx -y @clipy/cli@0.22.0` in
+running `npm i -g @clipy/cli`, or use `npx -y @clipy/cli@0.21.0` in
 its place, and check again. If a current CLI says the same, do not try the
 `--local` import. Ask for a caption file and run
 `clipy context import "<path to the file>" --transcript <file.vtt> --json`
@@ -143,7 +143,7 @@ Read `code` and `remediation` from the JSON and act on them:
 | `ytdlp_download_403` | YouTube refused the download. The CLI already retried, so do not run it again now; follow `remediation`. |
 | `ffmpeg_missing` | Install ffmpeg (`brew install ffmpeg` on macOS, `winget install Gyan.FFmpeg` on Windows, `sudo apt install ffmpeg` on Linux), then run `clipy doctor`. |
 | `speech_engine_required` | Ask the user, then run `clipy speech install` and import again. |
-| `youtube_sign_in_required`, or `unknown` with an `error` that says "Sign in to confirm you're not a bot" | YouTube is refusing requests from this network, which happens on cloud servers, CI runners and some VPNs. Running it again will not help, and `--transcript` does not get around it for a YouTube URL. Tell the user, and suggest running `/watch` on their own computer, or a `--local` import if they have the video file. With CLI 0.22.0 or later, offer one more option and ask before using it: re-run with `CLIPY_YTDLP_COOKIES_FROM_BROWSER=chrome` in front of the command (or `firefox`, `safari`, `edge`, `brave`), which lets yt-dlp use the user's own YouTube sign-in from that browser, read on this machine and never sent to Clipy. |
+| `youtube_sign_in_required`, or `unknown` with an `error` that says "Sign in to confirm you're not a bot" | YouTube is refusing requests from this network, which happens on cloud servers, CI runners and some VPNs. Running it again will not help, and `--transcript` does not get around it for a YouTube URL. Tell the user, and suggest running `/watch` on their own computer, or a `--local` import if they have the video file. With CLI 0.22.0 or later, offer one more option and ask before using it: re-run with `CLIPY_YTDLP_COOKIES_FROM_BROWSER=chrome` in front of the command (or `firefox`, `safari`, `edge`, `brave`), which lets yt-dlp use the user's own YouTube sign-in from that browser, read on this machine and never sent to Clipy. The fallback does not support this option because it is pinned to CLI 0.21.0. |
 | `unknown`, and `error` says "Private video" or "Video unavailable" | Ask for a public link to the video. |
 | anything else | Run `clipy doctor` (or `clipy doctor --local` for a video file) and tell the user what it reports. |
 

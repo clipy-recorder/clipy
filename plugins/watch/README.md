@@ -68,7 +68,7 @@ clipy speech install                 # about 35 MB
   uploaded. Your agents search the library through the Clipy MCP server. The
   plugin never adds `--sync` unless you ask for it.
 - What the plugin downloads, and from where: when the Clipy CLI is not
-  installed, `npx -y @clipy/cli@0.22.0` fetches that exact version from the
+  installed, `npx -y @clipy/cli@0.21.0` fetches that exact version from the
   npm registry. The first YouTube or Loom import fetches Clipy's own copy of
   yt-dlp from yt-dlp's GitHub releases into `~/.clipy/bin`. The first `--local`
   import asks before it downloads the speech model (GitHub or Hugging Face,
