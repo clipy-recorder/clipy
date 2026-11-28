@@ -82,11 +82,15 @@ export function wavSeconds(buf: Buffer): number {
   return buf.readUInt32LE(40) / 32000;
 }
 
-export function hasCommand(cmd: string): boolean {
+export function hasCommand(cmd: string, args: string[] = ["--version"]): boolean {
   try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
+    execFileSync(cmd, args, { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 }
+
+/** Use the same executable for fixture generation and the availability check. */
+export const ffmpeg = process.env.CLIPY_FFMPEG || "ffmpeg";
+export const hasFfmpeg = hasCommand(ffmpeg, ["-version"]);
