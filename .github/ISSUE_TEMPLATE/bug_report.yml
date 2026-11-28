@@ -19,6 +19,10 @@ body:
         - packages/capture
         - packages/transcribe
         - clipy CLI with --local
+        - plugins/watch (/watch)
+        - plugins/record (/record)
+        - plugins/clipy-record (Record button)
+        - CI or scripts
         - Docs
     validations:
       required: true
