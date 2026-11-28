@@ -369,3 +369,123 @@ describe("long typing sessions", () => {
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
 });
+
+describe("boundInteractions property tests", () => {
+  it("holds invariants across many seeded random event layouts", () => {
+    let seed = 42;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rnd() * arr.length)];
+    const controlCodes = [59, 62] as const;
+    const regularCodes = [0, 1, 2, 8, 12, 36, 49] as const;
+    const modifierCodes = [54, 55, 56, 58, 60] as const;
+
+    type TestEvent = {
+      kind: "move" | "scroll" | "down" | "up" | "key_down" | "key_up" | "annotation";
+      time_ms: number;
+      x?: number;
+      y?: number;
+      button?: number;
+      key_code?: number;
+      delta_x?: number;
+      delta_y?: number;
+      active?: boolean;
+    };
+
+    for (let run = 0; run < 300; run++) {
+      const limit = [10, 40, 120, 300][run % 4];
+      // Mix runs under, near, and well above the limit.
+      const count = run % 5 === 0 ? Math.floor(rnd() * (limit + 1)) : limit + 1 + Math.floor(rnd() * limit * 4);
+      const events: TestEvent[] = [];
+      let t = 0;
+      let ctrlHeld = false;
+
+      for (let i = 0; i < count; i++) {
+        t += Math.floor(rnd() * 40);
+        const r = rnd();
+        if (r < 0.45) {
+          events.push({ kind: "move", time_ms: t, x: Math.floor(rnd() * 1920), y: Math.floor(rnd() * 1080) });
+        } else if (r < 0.6) {
+          events.push({ kind: "scroll", time_ms: t, x: 500, y: 400, delta_x: 0, delta_y: Math.floor(rnd() * 20) - 10 });
+        } else if (r < 0.72) {
+          const btn = pick([0, 1]);
+          events.push({ kind: "down", time_ms: t, x: 300, y: 300, button: btn });
+          if (rnd() < 0.85) events.push({ kind: "up", time_ms: t + 20, x: 300, y: 300, button: btn });
+        } else if (r < 0.86) {
+          const code = rnd() < 0.25 ? pick(modifierCodes) : pick(regularCodes);
+          events.push({ kind: "key_down", time_ms: t, key_code: code });
+          if (rnd() < 0.85) events.push({ kind: "key_up", time_ms: t + 30, key_code: code });
+        } else if (r < 0.94) {
+          const code = pick(controlCodes);
+          events.push({ kind: ctrlHeld ? "key_up" : "key_down", time_ms: t, key_code: code });
+          ctrlHeld = !ctrlHeld;
+        } else {
+          events.push({ kind: "annotation", time_ms: t, active: rnd() < 0.5 });
+        }
+      }
+
+      const bounded = boundInteractions(events, limit);
+
+      // 1. Output length is at most the limit.
+      expect(bounded.length).toBeLessThanOrEqual(limit);
+
+      // 2. Original order is kept (strictly increasing subsequence of input).
+      const indexByEvent = new Map(events.map((e, i) => [e, i]));
+      let prevIdx = -1;
+      for (const e of bounded) {
+        const idx = indexByEvent.get(e);
+        expect(idx).toBeDefined();
+        expect(idx!).toBeGreaterThan(prevIdx);
+        prevIdx = idx!;
+      }
+
+      // 3. Input within the limit comes back unchanged.
+      if (events.length <= limit) {
+        expect(bounded).toBe(events);
+        continue;
+      }
+
+      // 4. Every Control key event and annotation is kept when priority edges alone fit.
+      const edgeKinds = new Set(["down", "up", "key_down", "key_up", "annotation"]);
+      const sortedEdges = events
+        .map((e, i) => ({ e, i }))
+        .filter(({ e }) => edgeKinds.has(e.kind))
+        .sort((a, b) => a.e.time_ms - b.e.time_ms || a.i - b.i);
+
+      let held = 0;
+      let priorityEdgeCount = 0;
+      const mustKeepControlOrAnnotation: TestEvent[] = [];
+      for (const { e } of sortedEdges) {
+        const code = e.key_code;
+        if (e.kind === "annotation") {
+          priorityEdgeCount += 1;
+          mustKeepControlOrAnnotation.push(e);
+        } else if ((e.kind === "key_down" || e.kind === "key_up") && (code === 59 || code === 62)) {
+          priorityEdgeCount += 1;
+          mustKeepControlOrAnnotation.push(e);
+          held = e.kind === "key_down" ? held + 1 : 0;
+        } else if (e.kind === "key_down" && held > 0 && typeof code === "number" && (code < 54 || code > 63)) {
+          priorityEdgeCount += 1;
+        }
+      }
+
+      const keptSet = new Set(bounded);
+      if (priorityEdgeCount <= limit) {
+        for (const e of mustKeepControlOrAnnotation) {
+          expect(keptSet.has(e)).toBe(true);
+        }
+      }
+
+      // 5. Remaining budget is filled evenly rather than dropped or prefix-sliced.
+      const nonMoves = events.filter((e) => e.kind !== "move").length;
+      const moves = events.filter((e) => e.kind === "move");
+      const moveBudget = limit - nonMoves;
+      if (moveBudget >= 2 && moves.length > moveBudget) {
+        expect(bounded.length).toBe(limit);
+        const keptMoves = bounded.filter((e) => e.kind === "move");
+        expect(keptMoves).toHaveLength(moveBudget);
+        const lastMoveIdx = moves.indexOf(keptMoves[keptMoves.length - 1]);
+        expect(lastMoveIdx).toBeGreaterThanOrEqual(Math.floor(moves.length / 2));
+      }
+    }
+  });
+});
