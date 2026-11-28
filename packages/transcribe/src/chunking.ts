@@ -271,7 +271,7 @@ export interface TimedWord {
   text: string;
 }
 
-const SENTENCE_END = /[.!?。！？]["')\]]*$/;
+const SENTENCE_END = /[.!?…。！？]["'’”)\]}」』）]?$/;
 
 /**
  * Group words into readable segments: break at a sentence end once a segment

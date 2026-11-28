@@ -221,4 +221,29 @@ describe("grouping", () => {
       { start: 6, end: 7, text: "after pause" },
     ]);
   });
+
+  it.each([
+    "done.",
+    "done!",
+    "done?",
+    "終わり。",
+    "終わり！",
+    "終わり？",
+    "wait…",
+    'done.”',
+    "done.’",
+    'done."',
+    "done.)",
+    "done.]",
+    "done.}",
+    "「終わり。」",
+    "『終わり。』",
+    "（終わり。）",
+  ])("breaks after viewer-supported sentence ending %s", (text) => {
+    const words = [
+      { start: 0, end: 3, text },
+      { start: 3.1, end: 3.5, text: "Next" },
+    ];
+    expect(groupWordsIntoSegments(words).map((segment) => segment.text)).toEqual([text, "Next"]);
+  });
 });
