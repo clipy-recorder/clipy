@@ -59,18 +59,77 @@ Accessibility permissions to the signature, so after each rebuild you may
 need to switch Clipy Local off and on again in System Settings, Privacy &
 Security.
 
+
 ## Test it
+
+### TypeScript check
+
+From the `desktop` directory:
 
 ```bash
 pnpm exec tsc --noEmit
-bash scripts/test-rust.sh --locked --lib   # finds the FFmpeg framework for you
+```
+
+### macOS desktop Rust tests
+
+The following script is macOS-only. It sets up the native FFmpeg framework and runs the desktop Rust library tests:
+
+```bash
+bash scripts/test-rust.sh --locked --lib
+```
+
+The desktop packaging and speech-permissions tests run in the macOS CI job:
+
+```bash
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
 ```
 
-`src-tauri/crates/clipy-local-moments` (moment selection),
-`src-tauri/crates/clipy-local-stt` (transcription) and
-`src-tauri/crates/clipy-local-edition` are separate crates with their own
-`cargo test`.
+### Local Rust crate tests (Linux and macOS)
+
+These three commands are run by CI on macOS and also pass on Linux. Run them from the `desktop` directory:
+
+```bash
+cd src-tauri/crates/clipy-local-edition
+cargo test --locked
+
+cd ../clipy-local-moments
+cargo test --locked
+
+cd ../clipy-local-stt
+cargo test --locked --no-default-features
+```
+
+The STT crate uses `--no-default-features` to avoid building its default sherpa-onnx engine.
+
+
+### Windows
+
+The Windows CI job builds the desktop app and runs a Rust compile check. It does not currently run the desktop Rust tests.
+
+Configure the shared FFmpeg 7 build and set `FFMPEG_DIR` to its folder. From the `desktop` directory, run:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm tauri:icon
+pnpm run build
+node scripts/stage-ffmpeg-dlls.mjs
+node scripts/stage-segmentation-assets.mjs
+```
+
+Stage the pinned sherpa-onnx dependency and set its archive directory for the current PowerShell session:
+
+```powershell
+$line = node scripts/stage-sherpa-onnx.mjs | Where-Object { $_ -like 'SHERPA_ONNX_ARCHIVE_DIR=*' }
+if (-not $line) { throw "stage-sherpa-onnx.mjs did not print SHERPA_ONNX_ARCHIVE_DIR" }
+$env:SHERPA_ONNX_ARCHIVE_DIR = $line -replace '^SHERPA_ONNX_ARCHIVE_DIR=', ''
+```
+
+Then run the Rust compile check from `desktop/src-tauri`:
+
+```powershell
+cargo check --locked
+```
+
 
 ## Drive it from an agent
 
