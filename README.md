@@ -95,6 +95,9 @@ agent that reads files, or attach it in ChatGPT, Claude or Gemini.
 
 ## How it works
 
+See [Key moments in a recording](docs/moments.md) for what the rules notice
+and how optional spoken cues add context.
+
 ```text
  video file, YouTube or Loom link, or your screen
         |
