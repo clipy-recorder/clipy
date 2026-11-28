@@ -187,6 +187,8 @@ agent the [agent-readable version](https://clipy.online/video/f8lshuommnk5.arec)
 
 The full product docs live at [clipy.online/docs](https://clipy.online/docs).
 
+Not sure whether to use hosted or local recording? See the [hosted vs. local AREC comparison](docs/hosted-vs-local.md).
+
 ## Record with the Clipy app
 
 1. Download Clipy from [clipy.online/download](https://clipy.online/download)
