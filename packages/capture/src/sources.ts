@@ -12,6 +12,14 @@ import type { Rect } from "./ffmpegArgs.js";
 export interface ScreenInfo extends Rect {
   name: string;
   primary?: boolean;
+  /**
+   * Where the OS itself listed this screen, before `primaryFirst` reordered
+   * the list. A backend addressed by index rather than by geometry -- ffmpeg's
+   * `ddagrab=output_idx=N` -- needs this, not the position in Clipy's
+   * `display:N` order. Absent when the screen did not come from an
+   * enumeration that has one.
+   */
+  deviceIndex?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +209,7 @@ export function parseScreensLine(text: string): ScreenInfo[] {
         .map((s, i) => ({
           name: typeof s.name === "string" && s.name ? s.name : `Display ${i + 1}`,
           primary: s.primary === true,
+          deviceIndex: i,
           x: Number(s.x) || 0,
           y: Number(s.y) || 0,
           width: Number(s.width) || 0,
@@ -223,6 +232,19 @@ export async function windowsScreens(run: Runner = realRunner, env: NodeJS.Proce
 export function primaryFirst(screens: ScreenInfo[]): ScreenInfo[] {
   const i = screens.findIndex((s) => s.primary);
   return i > 0 ? [screens[i], ...screens.filter((_, j) => j !== i)] : screens;
+}
+
+/**
+ * The index the OS gave the screen at `position` of a `primaryFirst` list.
+ *
+ * `display:N` counts the main display first, so a position in that list is
+ * not the number the OS knows the screen by, and a backend selected by index
+ * (`ddagrab=output_idx=N`) would otherwise capture a different monitor than
+ * the one asked for. Falls back to `position` when the screens carry no
+ * enumeration index.
+ */
+export function deviceIndexFor(screens: ScreenInfo[], position: number): number {
+  return screens[position]?.deviceIndex ?? position;
 }
 
 export async function listDshowAudio(run: Runner = realRunner, env: NodeJS.ProcessEnv = process.env): Promise<string[]> {

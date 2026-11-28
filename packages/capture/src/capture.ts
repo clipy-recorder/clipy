@@ -18,6 +18,7 @@ import { currentPlatform, ffmpegPath, ffprobePath, realRunner, sleep, type Runne
 import { samplesToEvents, startPointerSampler, type PointerSampler } from "./sidecar.js";
 import {
   avfoundationScreens,
+  deviceIndexFor,
   linuxScreens,
   listAvfoundation,
   listDshowAudio,
@@ -260,6 +261,34 @@ async function resolveMac(options: CaptureOptions, base: Omit<CapturePlan, "vide
   return { plans: [{ plan: { ...base, video: { backend: "avfoundation", device }, audio }, label: "avfoundation" }], geometry, warnings, windowCapture: false };
 }
 
+/**
+ * The Windows plans for `display:N`, the preferred backend first.
+ *
+ * The two backends are addressed differently, and `screens` is in Clipy's
+ * `display:N` order (main display first), which is not the order Windows
+ * enumerated them in:
+ *
+ * - ddagrab names a DXGI output by number, so it needs the number Windows
+ *   gave that screen; passing the `display:N` position instead records a
+ *   different monitor whenever the main display is not enumerated first.
+ * - gdigrab crops the virtual desktop, so it takes the screen's rectangle and
+ *   does not care about either order.
+ *
+ * Pure, so the mapping is unit tested on any OS.
+ */
+export function windowsPlans(
+  base: Omit<CapturePlan, "video" | "audio">,
+  screens: ScreenInfo[],
+  index: number,
+  audio?: AudioInput,
+): { plan: CapturePlan; label: string }[] {
+  const screen = screens[index] ?? undefined;
+  return [
+    { plan: { ...base, video: { backend: "ddagrab", outputIndex: deviceIndexFor(screens, index) }, audio }, label: "ddagrab" },
+    { plan: { ...base, video: { backend: "gdigrab", rect: screen }, audio }, label: "gdigrab" },
+  ];
+}
+
 async function resolveWindows(options: CaptureOptions, base: Omit<CapturePlan, "video" | "audio">, devices: string, sampler: PointerSampler, env: NodeJS.ProcessEnv): Promise<Resolved> {
   const warnings: string[] = [];
   const source = parseSourceId(options.source);
@@ -290,15 +319,7 @@ async function resolveWindows(options: CaptureOptions, base: Omit<CapturePlan, "
     }
   }
   const geometry = screen ? { x: screen.x, y: screen.y, width: screen.width, height: screen.height } : null;
-  return {
-    plans: [
-      { plan: { ...base, video: { backend: "ddagrab", outputIndex: source.index }, audio }, label: "ddagrab" },
-      { plan: { ...base, video: { backend: "gdigrab", rect: screen ?? undefined }, audio }, label: "gdigrab" },
-    ],
-    geometry,
-    warnings,
-    windowCapture: false,
-  };
+  return { plans: windowsPlans(base, screens, source.index, audio), geometry, warnings, windowCapture: false };
 }
 
 function statOrNull(path: string): Stats | null {

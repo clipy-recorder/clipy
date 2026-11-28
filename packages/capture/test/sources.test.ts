@@ -15,6 +15,7 @@ import {
   parseXdpyinfoSize,
   parseXrandrMonitors,
   primaryFirst,
+  deviceIndexFor,
 } from "../src/sources.js";
 
 const XRANDR = `Monitors: 2
@@ -48,6 +49,12 @@ const DSHOW_LEGACY = `[dshow @ 000001] DirectShow video devices (some may be bot
 [dshow @ 000001]  "Microphone (USB Audio)"
 [dshow @ 000001]     Alternative name "@device_cm_y"
 `;
+
+/** Screen.AllScreens as the PowerShell helper prints it: the main display is not listed first. */
+const WINDOWS_SCREENS =
+  'S [{"name":"\\\\\\\\.\\\\DISPLAY2","x":-1920,"y":0,"width":1920,"height":1080,"primary":false},' +
+  '{"name":"\\\\\\\\.\\\\DISPLAY1","x":0,"y":0,"width":2560,"height":1440,"primary":true},' +
+  '{"name":"\\\\\\\\.\\\\DISPLAY3","x":2560,"y":0,"width":1920,"height":1080,"primary":false}]';
 
 describe("Linux parsers", () => {
   it("reads monitors and the primary flag from xrandr", () => {
@@ -115,9 +122,36 @@ describe("Windows parsers", () => {
       ["\\\\.\\DISPLAY2", -1920],
     ]);
     expect(parseScreensLine('S {"name":"","x":0,"y":0,"width":1366,"height":768,"primary":true}')).toEqual([
-      { name: "Display 1", primary: true, x: 0, y: 0, width: 1366, height: 768 },
+      { name: "Display 1", primary: true, x: 0, y: 0, width: 1366, height: 768, deviceIndex: 0 },
     ]);
     expect(parseScreensLine("S not json")).toEqual([]);
+  });
+
+  it("keeps the order Windows listed the screens in, so a reorder can be undone", () => {
+    expect(parseScreensLine(WINDOWS_SCREENS).map((s) => [s.name, s.deviceIndex, s.primary])).toEqual([
+      ["\\\\.\\DISPLAY2", 0, false],
+      ["\\\\.\\DISPLAY1", 1, true],
+      ["\\\\.\\DISPLAY3", 2, false],
+    ]);
+  });
+});
+
+describe("deviceIndexFor", () => {
+  // Windows does not promise the main display is enumerated first, which is
+  // the whole reason primaryFirst exists: here the main one is DXGI output 1.
+  const screens = primaryFirst(parseScreensLine(WINDOWS_SCREENS));
+
+  it("maps a display:N position back to the output number Windows gave it", () => {
+    expect(screens.map((s) => s.name)).toEqual(["\\\\.\\DISPLAY1", "\\\\.\\DISPLAY2", "\\\\.\\DISPLAY3"]);
+    // display:0 is the main display, which ddagrab knows as output_idx=1.
+    expect(deviceIndexFor(screens, 0)).toBe(1);
+    expect(deviceIndexFor(screens, 1)).toBe(0);
+    expect(deviceIndexFor(screens, 2)).toBe(2);
+  });
+
+  it("is the position itself when the screens carry no enumeration index", () => {
+    expect(deviceIndexFor([{ name: "only", x: 0, y: 0, width: 800, height: 600, primary: true }], 0)).toBe(0);
+    expect(deviceIndexFor([], 3)).toBe(3);
   });
 });
 
