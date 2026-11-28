@@ -9,7 +9,7 @@ import { join } from "node:path";
  */
 const dir = mkdtempSync(join(tmpdir(), "clipy-capture-test-"));
 function stub(name: string): string {
-  const path = join(dir, name);
+  const path = join(dir, name).replace(/\\/g, "/");
   writeFileSync(path, "#!/bin/sh\nexit 0\n");
   chmodSync(path, 0o755);
   return path;
