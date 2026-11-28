@@ -10,7 +10,7 @@ import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { Worker } from "node:worker_threads";
 import { readTar } from "./tar.js";
 import type { LocalModelId } from "./types.js";
@@ -119,16 +119,28 @@ export const LOCAL_MODELS: Record<LocalModelId, LocalModel> = {
 
 const MARKER = ".installed.json";
 
-/** Platform cache folder for models: `~/.cache/clipy-local/models` on Linux. */
-export function defaultModelDir(): string {
-  const home = homedir();
-  if (process.platform === "win32") {
-    const base = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
-    return join(base, "clipy-local", "models");
+/** Read an env var, treating an empty or blank value as unset. */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name]?.trim();
+  return value ? value : undefined;
+}
+
+/**
+ * Platform cache folder for models: `~/.cache/clipy-local/models` on Linux.
+ * A blank or relative `XDG_CACHE_HOME` is ignored, as the XDG spec says, so the
+ * CLI and the app look in the same folder.
+ */
+export function defaultModelDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") {
+    const home = envValue(env, "USERPROFILE") ?? homedir();
+    const base = envValue(env, "LOCALAPPDATA") ?? win32.join(home, "AppData", "Local");
+    return win32.join(base, "clipy-local", "models");
   }
-  if (process.platform === "darwin") return join(home, "Library", "Caches", "clipy-local", "models");
-  const base = process.env.XDG_CACHE_HOME || join(home, ".cache");
-  return join(base, "clipy-local", "models");
+  const home = envValue(env, "HOME") ?? homedir();
+  if (platform === "darwin") return posix.join(home, "Library", "Caches", "clipy-local", "models");
+  const xdg = envValue(env, "XDG_CACHE_HOME");
+  const base = xdg && posix.isAbsolute(xdg) ? xdg : posix.join(home, ".cache");
+  return posix.join(base, "clipy-local", "models");
 }
 
 /** Final paths of a model's files inside its folder. */
