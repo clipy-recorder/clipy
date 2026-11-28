@@ -211,13 +211,18 @@ async function browserWebcamDevices(
     const all = await navigator.mediaDevices.enumerateDevices();
     const cameras = all.filter((d) => d.kind === "videoinput" && d.deviceId);
     if (cameras.length === 0) return nativeDevices;
-    return cameras.map((camera, index) => ({
-      id: camera.deviceId,
-      // Labels are blank until camera permission has been granted once; the
-      // Media Foundation name is a better placeholder than "Camera 2".
-      name: camera.label || nativeDevices[index]?.name || `Camera ${index + 1}`,
-      source: "native" as const,
-    }));
+    const browserDevices = cameras.map((camera) => ({ id: camera.deviceId, name: camera.label }));
+    return cameras.map((camera, index) => {
+      // The browser and Media Foundation enumerate independently, so their
+      // array positions do not identify the same physical camera. Reuse a
+      // native name only when the device matcher can establish identity.
+      const nativeId = nativeCameraId(camera.deviceId, browserDevices, nativeDevices);
+      return {
+        id: camera.deviceId,
+        name: camera.label || nativeDevices.find((device) => device.id === nativeId)?.name || `Camera ${index + 1}`,
+        source: "native" as const,
+      };
+    });
   } catch {
     return nativeDevices;
   }
