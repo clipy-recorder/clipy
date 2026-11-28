@@ -39,6 +39,8 @@ export interface CapturePlan {
   fps: number;
   encoder: H264Encoder;
   maxSeconds?: number;
+  /** Draw the cursor in the captured video. Default: true. */
+  cursor?: boolean;
   output: string;
 }
 
@@ -55,10 +57,11 @@ export function pickH264Encoder(encodersText: string, platform: Platform): H264E
   return null;
 }
 
-function videoInputArgs(v: VideoInput, fps: number): string[] {
+function videoInputArgs(v: VideoInput, fps: number, cursor = true): string[] {
+  const drawCursor = cursor ? "1" : "0";
   switch (v.backend) {
     case "x11grab": {
-      const args = ["-thread_queue_size", "1024", "-f", "x11grab", "-draw_mouse", "1", "-framerate", String(fps)];
+      const args = ["-thread_queue_size", "1024", "-f", "x11grab", "-draw_mouse", drawCursor, "-framerate", String(fps)];
       if (v.windowId !== undefined) {
         args.push("-window_id", `0x${v.windowId.toString(16)}`);
       } else if (v.rect) {
@@ -76,11 +79,22 @@ function videoInputArgs(v: VideoInput, fps: number): string[] {
     }
     case "avfoundation":
       // The audio half of the device string is filled in by buildFfmpegArgs.
-      return ["-thread_queue_size", "1024", "-f", "avfoundation", "-capture_cursor", "1", "-capture_mouse_clicks", "1", "-framerate", String(fps)];
+      return [
+        "-thread_queue_size",
+        "1024",
+        "-f",
+        "avfoundation",
+        "-capture_cursor",
+        drawCursor,
+        "-capture_mouse_clicks",
+        drawCursor,
+        "-framerate",
+        String(fps),
+      ];
     case "ddagrab":
-      return ["-thread_queue_size", "1024", "-f", "lavfi", "-i", `ddagrab=output_idx=${v.outputIndex}:framerate=${fps}:draw_mouse=1`];
+      return ["-thread_queue_size", "1024", "-f", "lavfi", "-i", `ddagrab=output_idx=${v.outputIndex}:framerate=${fps}:draw_mouse=${drawCursor}`];
     case "gdigrab": {
-      const args = ["-thread_queue_size", "1024", "-f", "gdigrab", "-draw_mouse", "1", "-framerate", String(fps)];
+      const args = ["-thread_queue_size", "1024", "-f", "gdigrab", "-draw_mouse", drawCursor, "-framerate", String(fps)];
       if (v.rect) {
         args.push(
           "-offset_x",
@@ -136,7 +150,7 @@ export function videoFilter(backend: Backend): string {
  */
 export function buildFfmpegArgs(plan: CapturePlan): string[] {
   const args = ["-hide_banner", "-loglevel", "info", "-nostats", "-y"];
-  const video = videoInputArgs(plan.video, plan.fps);
+  const video = videoInputArgs(plan.video, plan.fps, plan.cursor);
   args.push(...video);
   let audioMap: string | null = null;
   if (plan.video.backend === "avfoundation") {

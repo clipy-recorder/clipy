@@ -338,7 +338,7 @@ export async function startCapture(options: CaptureOptions, internal: StartOptio
 
   const features = await ffmpegFeatures(ffmpeg, platform, env);
   if (!features.encoder) throw new Error("this ffmpeg has no H.264 encoder (libx264); run checkCapture for install steps");
-  const base = { fps, encoder: features.encoder, maxSeconds: options.maxSeconds, output: outPath };
+  const base = { fps, encoder: features.encoder, maxSeconds: options.maxSeconds, cursor: options.cursor, output: outPath };
 
   const xDisplay = options.xDisplay ?? env.DISPLAY;
   const sampler = startPointerSampler(platform, { xDisplay, env });
