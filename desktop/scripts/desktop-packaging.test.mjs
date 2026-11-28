@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -114,22 +114,65 @@ test("staging is a no-op on macOS without FFMPEG_DIR", (t) => {
   assert.equal(existsSync(dest), false);
 });
 
+test("restaging FFmpeg drops DLLs removed from the shared build", (t) => {
+  const { bin, dest, run } = fixture(t);
+  writeFileSync(path.join(bin, "avutil-59.dll"), "current");
+  writeFileSync(path.join(bin, "old-codec.DLL"), "old");
+  const first = run("win32");
+  assert.equal(first.status, 0, first.stderr);
+  assert.ok(existsSync(path.join(dest, "old-codec.DLL")));
+
+  rmSync(path.join(bin, "old-codec.DLL"));
+  writeFileSync(path.join(dest, "notes.txt"), "keep");
+  const second = run("win32");
+  assert.equal(second.status, 0, second.stderr);
+  assert.deepEqual(readdirSync(dest).sort(), ["avutil-59.dll", "notes.txt"]);
+});
+
 test("Windows stages DLLs on a clean checkout, excluding executables", (t) => {
   const { bin, dest, run } = fixture(t);
   writeFileSync(path.join(bin, "avutil-59.dll"), "first");
   writeFileSync(path.join(bin, "avcodec-61.dll"), "codec");
   writeFileSync(path.join(bin, "ffmpeg.exe"), "exe");
+  mkdirSync(path.join(bin, "unused.dll"));
   const result = run("win32");
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(readdirSync(dest).sort(), ["avcodec-61.dll", "avutil-59.dll"]);
   assert.equal(readFileSync(path.join(dest, "avutil-59.dll"), "utf8"), "first");
 });
 
+test("failed FFmpeg restaging keeps previously staged DLLs until a successful retry", (t) => {
+  const { bin, dest, run } = fixture(t);
+  writeFileSync(path.join(bin, "old-codec.dll"), "old");
+  const first = run("win32");
+  assert.equal(first.status, 0, first.stderr);
+
+  rmSync(path.join(bin, "old-codec.dll"));
+  writeFileSync(path.join(bin, "new-codec.dll"), "new");
+  // A directory at the output path makes the copy fail on every test platform.
+  const blocked = path.join(dest, "new-codec.dll");
+  mkdirSync(blocked);
+  const failed = run("win32");
+  assert.equal(failed.status, 1, failed.stderr);
+  assert.equal(readFileSync(path.join(dest, "old-codec.dll"), "utf8"), "old");
+
+  rmdirSync(blocked);
+  const retry = run("win32");
+  assert.equal(retry.status, 0, retry.stderr);
+  assert.deepEqual(readdirSync(dest), ["new-codec.dll"]);
+  assert.equal(readFileSync(path.join(dest, "new-codec.dll"), "utf8"), "new");
+});
+
 test("Windows rejects missing FFmpeg configuration and empty shared builds", (t) => {
-  const { root, run } = fixture(t);
+  const { root, bin, run } = fixture(t);
+  const malformed = path.join(root, "malformed");
+  mkdirSync(malformed);
+  writeFileSync(path.join(malformed, "bin"), "not a directory");
+  mkdirSync(path.join(bin, "unused.dll"));
   for (const [dir, message] of [
     ["", /FFMPEG_DIR is not set/],
     [path.join(root, "missing"), /no bin directory/],
+    [malformed, /no bin directory/],
     [path.join(root, "ffmpeg"), /no DLLs/],
   ]) {
     const result = run("win32", dir);
