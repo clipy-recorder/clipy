@@ -499,30 +499,40 @@ pub(crate) fn normalize_click(
 struct Label {
     time_ms: f64,
     label: Option<String>,
+    /// The UTF-16 units of the label as JavaScript holds it. A cut through a
+    /// surrogate pair leaves a lone surrogate there, which `label` can only
+    /// show as U+FFFD; two labels cut through different pairs are still
+    /// different labels, so clustering compares these.
+    units: Option<Vec<u16>>,
 }
 
 fn parse_click_elements(elements: &[ClickElement]) -> Vec<Label> {
     elements
         .iter()
         .map(|e| {
-            let label = e
+            let units = e
                 .label
                 .as_deref()
-                .map(|l| js::slice_utf16(js::trim(&js::collapse_spaces(l)), 80))
-                .filter(|l| !l.is_empty());
+                .map(|l| {
+                    js::trim(&js::collapse_spaces(l))
+                        .encode_utf16()
+                        .take(80)
+                        .collect::<Vec<u16>>()
+                })
+                .filter(|u| !u.is_empty());
             Label {
                 time_ms: e.time_ms,
-                label,
+                label: units.as_deref().map(String::from_utf16_lossy),
+                units,
             }
         })
         .collect()
 }
 
-fn click_label_at(elements: &[Label], t_ms: f64) -> Option<String> {
+fn click_label_at(elements: &[Label], t_ms: f64) -> Option<&Label> {
     elements
         .iter()
         .find(|e| (e.time_ms - t_ms).abs() <= 50.0 && e.label.is_some())
-        .and_then(|e| e.label.clone())
 }
 
 fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<ClickCluster> {
@@ -533,11 +543,15 @@ fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<Click
         .collect();
     sort_by_time(&mut downs);
     let mut clusters: Vec<ClickCluster> = Vec::new();
+    // The UTF-16 units of the last cluster's label, compared as JavaScript compares strings.
+    let mut last_units: Option<&[u16]> = None;
     for event in downs {
         let (x, y) = (event.x.unwrap_or(0.0), event.y.unwrap_or(0.0));
-        let label = click_label_at(elements, event.time_ms);
+        let found = click_label_at(elements, event.time_ms);
+        let units = found.and_then(|l| l.units.as_deref());
+        let label = found.and_then(|l| l.label.clone());
         if let Some(last) = clusters.last_mut() {
-            let same_label = match (&label, &last.label) {
+            let same_label = match (units, last_units) {
                 (Some(a), Some(b)) => a == b,
                 _ => true,
             };
@@ -549,6 +563,7 @@ fn cluster_clicks(events: &[&InteractionEvent], elements: &[Label]) -> Vec<Click
                 continue;
             }
         }
+        last_units = units;
         clusters.push(ClickCluster {
             t_ms: event.time_ms,
             x,
@@ -815,4 +830,45 @@ fn key_bursts(events: &[&InteractionEvent]) -> Vec<Json> {
                 .with("eventCount", Json::Num(n as f64))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn down(time_ms: f64) -> InteractionEvent {
+        InteractionEvent {
+            kind: "down".into(),
+            time_ms,
+            x: Some(1.0),
+            y: Some(1.0),
+            button: Some(1.0),
+            ..Default::default()
+        }
+    }
+
+    fn element(time_ms: f64, label: &str) -> ClickElement {
+        ClickElement {
+            time_ms,
+            role: Some("AXButton".into()),
+            label: Some(label.into()),
+        }
+    }
+
+    #[test]
+    fn labels_cut_through_different_surrogate_pairs_stay_apart() {
+        // The 80-unit cut leaves U+D83D of one emoji and U+D83E of the other.
+        // JavaScript still tells those apart, although both print as U+FFFD here.
+        let a = format!("{}\u{1F600}", "a".repeat(79));
+        let b = format!("{}\u{1F9ED}", "a".repeat(79));
+        let elements = parse_click_elements(&[element(100.0, &a), element(200.0, &b)]);
+        let (first, second) = (down(100.0), down(200.0));
+        let clusters = cluster_clicks(&[&first, &second], &elements);
+        assert_eq!(clusters.len(), 2);
+        assert!(clusters.iter().all(|c| c.count == 1));
+        assert_eq!(clusters[0].label, clusters[1].label);
+
+        let same = parse_click_elements(&[element(100.0, &a), element(200.0, &a)]);
+        assert_eq!(cluster_clicks(&[&first, &second], &same).len(), 1);
+    }
 }
