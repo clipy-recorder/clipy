@@ -107,6 +107,19 @@ export async function probeMedia(inputPath: string, signal?: AbortSignal): Promi
   return { durationSec: times.length > 0 ? Number(times[times.length - 1][1]) / 1e6 : null, hasAudio };
 }
 
+/**
+ * A WAV has no timestamps, so a late audio start or a hole must become real
+ * silence, or every later transcript time is too early. `aresample` does that,
+ * but it also drops samples whose timestamps run backwards, as in joined
+ * recordings whose clock restarts. `asetpts` first moves such audio to follow
+ * what came before: st(0) keeps the shift, st(1) where the next frame is due.
+ * Overlaps under 0.1 s are left to `aresample`.
+ */
+const KEEP_TIMELINE = [
+  "asetpts='if(lt(PTS+ld(0),ld(1)-0.1/TB),st(0,ld(1)-PTS));st(1,PTS+ld(0)+NB_SAMPLES/SR/TB);PTS+ld(0)'",
+  "aresample=async=1:first_pts=0",
+].join(",");
+
 /** ffmpeg: any video/audio file -> 16 kHz mono 16-bit WAV. Throws a clear error if ffmpeg is missing. */
 export async function extractAudio(inputPath: string, outWavPath: string, signal?: AbortSignal): Promise<void> {
   const { code, stderr } = await runFfmpeg(
@@ -119,6 +132,8 @@ export async function extractAudio(inputPath: string, outWavPath: string, signal
       "-vn",
       "-map_metadata",
       "-1",
+      "-af",
+      KEEP_TIMELINE,
       "-ac",
       "1",
       "-ar",
