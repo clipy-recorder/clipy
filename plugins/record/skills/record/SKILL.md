@@ -3,7 +3,7 @@ name: record
 description: Record the user's screen with Clipy so they can show you something instead of typing it, then read the recording and act on it. Use when the user runs /record, says "let me show you", "record my screen", "I'll record it", or shares the path to a recording.arec file.
 argument-hint: "[what to do with the recording] | stop | cancel | <path to recording.arec>"
 tags: [screen-recording, record, video, transcript, arec, claude-code]
-allowed-tools: Read, Bash(command -v clipy), Bash(clipy --version), Bash(clipy sources --local --source mac-screen --json), Bash(lsappinfo find *), Bash(npx -y @clipy/cli@0.21.0 sources --local --source mac-screen --json), Bash(clipy session start *), Bash(clipy session stop *), Bash(clipy session abort*), Bash(clipy session status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.21.0 session start *), Bash(npx -y @clipy/cli@0.21.0 session stop *), Bash(npx -y @clipy/cli@0.21.0 session abort*), Bash(npx -y @clipy/cli@0.21.0 session status*), Bash(npx -y @clipy/cli@0.21.0 doctor*)
+allowed-tools: Read, Bash(command -v clipy), Bash(clipy --version), Bash(clipy sources --local --source mac-screen --json), Bash(lsappinfo find *), Bash(npx -y @clipy/cli@0.22.0 sources --local --source mac-screen --json), Bash(clipy session start *), Bash(clipy session stop *), Bash(clipy session abort*), Bash(clipy session status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.22.0 session start *), Bash(npx -y @clipy/cli@0.22.0 session stop *), Bash(npx -y @clipy/cli@0.22.0 session abort*), Bash(npx -y @clipy/cli@0.22.0 session status*), Bash(npx -y @clipy/cli@0.22.0 doctor*)
 ---
 
 # Record the screen
@@ -38,7 +38,7 @@ share a video file or a link with `/watch` instead, and stop.
 
 Run `command -v clipy`. If it prints a path, run `clipy --version`. Use `clipy`
 in the commands below when the version is 0.20.0 or later. Otherwise, or when
-`command -v` prints nothing, use `npx -y @clipy/cli@0.21.0` in place of
+`command -v` prints nothing, use `npx -y @clipy/cli@0.22.0` in place of
 `clipy` (it needs Node.js 18.17 or later). Do not install anything globally
 without asking.
 
