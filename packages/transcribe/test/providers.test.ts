@@ -8,7 +8,7 @@ import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
-import { ProviderError, requestJson } from "../src/providers/http.js";
+import { MAX_RETRY_WAIT_MS, parseRetryAfterMs, ProviderError, request, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
@@ -485,5 +485,118 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+describe("rate limit retries", () => {
+  it("parses Retry-After seconds, HTTP dates, and caps large values", () => {
+    const now = Date.UTC(2026, 10, 27, 12, 0, 0);
+    expect(parseRetryAfterMs(null, now)).toBe(0);
+    expect(parseRetryAfterMs("", now)).toBe(0);
+    expect(parseRetryAfterMs("not-a-date", now)).toBe(0);
+    expect(parseRetryAfterMs("2", now)).toBe(2000);
+    expect(parseRetryAfterMs(" 0.25 ", now)).toBe(250);
+    expect(parseRetryAfterMs("3600", now)).toBe(MAX_RETRY_WAIT_MS);
+    expect(parseRetryAfterMs("Fri, 27 Nov 2026 12:00:05 GMT", now)).toBe(5000);
+    expect(parseRetryAfterMs("Fri, 27 Nov 2026 11:59:50 GMT", now)).toBe(0);
+    expect(parseRetryAfterMs("Fri, 27 Nov 2026 13:00:00 GMT", now)).toBe(MAX_RETRY_WAIT_MS);
+  });
+
+  it("retries once on 429 and succeeds, preserving the request body", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      if (hits === 1) {
+        res.statusCode = 429;
+        res.setHeader("retry-after", "0.02");
+        res.end("slow down");
+        return;
+      }
+      json(res, { ok: true });
+    });
+    const r = await requestJson("openai-compatible", `${server.url}/x`, { method: "POST", body: JSON.stringify({ a: 1 }) });
+    expect(r).toEqual({ ok: true });
+    expect(hits).toBe(2);
+    expect(server.requests[0].body.toString()).toBe('{"a":1}');
+    expect(server.requests[1].body.toString()).toBe('{"a":1}');
+  });
+
+  it("retries once on 503 with an HTTP-date Retry-After through request()", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      if (hits === 1) {
+        res.statusCode = 503;
+        res.setHeader("retry-after", new Date(Date.now() + 20).toUTCString());
+        res.end();
+        return;
+      }
+      json(res, { ok: true });
+    });
+    const res = await request("deepgram", `${server.url}/x`, { method: "POST", body: "hi" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(hits).toBe(2);
+  });
+
+  it("retries at most once on two 429s and keeps the ProviderError message", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      res.statusCode = 429;
+      res.setHeader("retry-after", "0");
+      res.end(SECRET_TEXT);
+    });
+    const err = await requestJson("openai-compatible", `${server.url}/x`, {}).catch((e: Error) => e);
+    expect(hits).toBe(2);
+    expect(err).toBeInstanceOf(ProviderError);
+    expect((err as ProviderError).status).toBe(429);
+    expect((err as Error).message).toBe("openai-compatible transcription failed (HTTP 429): rate limited, try again later");
+  });
+
+  it("does not retry non-rate-limit statuses", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      res.statusCode = 500;
+      res.end("boom");
+    });
+    await expectSafeError(requestJson("gemini", `${server.url}/x`, {}), "gemini", 500);
+    expect(hits).toBe(1);
+  });
+
+  it("caps long Retry-After waits", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      if (hits === 1) {
+        res.statusCode = 429;
+        res.setHeader("retry-after", "3600");
+        res.end();
+        return;
+      }
+      json(res, { ok: true });
+    });
+    const t0 = Date.now();
+    const r = await requestJson("elevenlabs", `${server.url}/x`, {}, undefined, undefined, { maxRetryWaitMs: 30 });
+    expect(r).toEqual({ ok: true });
+    expect(hits).toBe(2);
+    expect(Date.now() - t0).toBeLessThan(1000);
+  });
+
+  it("cancels the Retry-After wait when the abort signal fires", async () => {
+    let hits = 0;
+    server = await fakeServer((_req, res) => {
+      hits++;
+      res.statusCode = 429;
+      res.setHeader("retry-after", "60");
+      res.end();
+    });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 30);
+    const t0 = Date.now();
+    await expect(requestJson("assemblyai", `${server.url}/x`, {}, ac.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(hits).toBe(1);
+    expect(Date.now() - t0).toBeLessThan(1000);
   });
 });

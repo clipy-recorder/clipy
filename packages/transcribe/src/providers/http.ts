@@ -45,9 +45,30 @@ export const PROVIDER_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
  */
 export const PROVIDER_ANSWER_WAIT_MS = 20 * 60 * 1000;
 
+/** Maximum time to wait for a single Retry-After before retrying once. */
+export const MAX_RETRY_WAIT_MS = 60_000;
+
 export interface RequestTiming {
   idleMs?: number;
   answerWaitMs?: number;
+  maxRetryWaitMs?: number;
+}
+
+/**
+ * Parse an HTTP `Retry-After` header (delay-seconds or HTTP-date) into
+ * milliseconds, clamped to `[0, maxMs]`. Missing or invalid values return 0.
+ */
+export function parseRetryAfterMs(header: string | null, now: number = Date.now(), maxMs: number = MAX_RETRY_WAIT_MS): number {
+  if (!header) return 0;
+  const trimmed = header.trim();
+  if (!trimmed) return 0;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) {
+    const seconds = Number(trimmed);
+    if (Number.isFinite(seconds)) return Math.min(maxMs, Math.max(0, Math.round(seconds * 1000)));
+  }
+  const at = Date.parse(trimmed);
+  if (Number.isFinite(at)) return Math.min(maxMs, Math.max(0, at - now));
+  return 0;
 }
 
 /** Upload slice: progress is counted per slice handed to the connection. */
@@ -72,7 +93,16 @@ async function bodyBytes(url: string, init: RequestInit): Promise<{ bytes: Uint8
   return { bytes: new Uint8Array(await r.arrayBuffer()), contentType: r.headers.get("content-type") };
 }
 
-async function send(provider: string, url: string, init: RequestInit, signal: AbortSignal | undefined, timing: RequestTiming): Promise<Sent> {
+type PreparedBody = { bytes: Uint8Array; contentType: string | null } | null;
+
+async function sendAttempt(
+  provider: string,
+  url: string,
+  init: RequestInit,
+  body: PreparedBody,
+  signal: AbortSignal | undefined,
+  timing: RequestTiming,
+): Promise<{ ok: true; sent: Sent } | { ok: false; status: number; retryAfter: string | null }> {
   const idleMs = timing.idleMs ?? PROVIDER_IDLE_TIMEOUT_MS;
   const answerWaitMs = timing.answerWaitMs ?? PROVIDER_ANSWER_WAIT_MS;
   const clock = new AbortController();
@@ -98,7 +128,6 @@ async function send(provider: string, url: string, init: RequestInit, signal: Ab
 
   let res: Response;
   try {
-    const body = await bodyBytes(url, init);
     let finalInit: RequestInit & { duplex?: "half" } = { ...init, redirect: "error", signal: combined };
     if (body) {
       // Streamed in slices so a slow upload that is still moving is not cut
@@ -132,11 +161,27 @@ async function send(provider: string, url: string, init: RequestInit, signal: Ab
   }
   if (!res.ok) {
     done();
+    const retryAfter = res.headers.get("retry-after");
     // Drain without reading the body into any message.
     await res.body?.cancel().catch(() => undefined);
-    throw new ProviderError(provider, res.status);
+    return { ok: false, status: res.status, retryAfter };
   }
-  return { res, timeoutError, bump, done };
+  return { ok: true, sent: { res, timeoutError, bump, done } };
+}
+
+async function send(provider: string, url: string, init: RequestInit, signal: AbortSignal | undefined, timing: RequestTiming): Promise<Sent> {
+  const body = await bodyBytes(url, init);
+  const maxWait = timing.maxRetryWaitMs ?? MAX_RETRY_WAIT_MS;
+  for (let attempt = 0; ; attempt++) {
+    const result = await sendAttempt(provider, url, init, body, signal, timing);
+    if (result.ok) return result.sent;
+    if (attempt === 0 && (result.status === 429 || result.status === 503)) {
+      const waitMs = parseRetryAfterMs(result.retryAfter, Date.now(), maxWait);
+      await sleep(waitMs, signal);
+      continue;
+    }
+    throw new ProviderError(provider, result.status);
+  }
 }
 
 /**
@@ -220,8 +265,9 @@ function cancelled(): Error {
 }
 
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(cancelled());
+  if (ms <= 0) return Promise.resolve();
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(cancelled());
     const onAbort = () => {
       clearTimeout(t);
       reject(cancelled());
