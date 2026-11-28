@@ -8,4 +8,4 @@ contact_links:
     about: Report a security problem privately.
   - name: Your account, plan or billing
     url: https://clipy.online/support
-    about: Help with signing in, your plan, billing or access to a share link. Bugs in the apps go in "Bug in a Clipy app" above.
+    about: Help with signing in, your plan, billing or access to a share link. Bugs in the apps go in "Bug in a Clipy app" above; doc issues go in "Docs issue".
