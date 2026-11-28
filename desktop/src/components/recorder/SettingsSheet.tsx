@@ -501,7 +501,12 @@ export function SettingsSheet(p: SettingsSheetProps) {
 
             <SectionTitle>{t("sections.shortcuts")}</SectionTitle>
             <p className="px-5 pb-1 text-[12px] leading-snug text-ink-secondary">{t("shortcutsHint")}</p>
-            <ShortcutsEditor stopHotkey={p.hotkey} onStopHotkeyChange={p.onHotkeyChange} onChange={onShortcutsChange} />
+            <ShortcutsEditor
+              stopHotkey={p.hotkey}
+              onStopHotkeyChange={p.onHotkeyChange}
+              clipboardEnabled={clipboardHistory ?? false}
+              onChange={onShortcutsChange}
+            />
             <TalkSettings />
 
             <SectionTitle>{t("sections.recordingsOnDevice", { device: deviceName })}</SectionTitle>
