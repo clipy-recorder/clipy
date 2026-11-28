@@ -128,6 +128,68 @@
       "pitch": "Want share links anyone can watch, AI with no keys to manage and team workspaces? That is the full {fullApp} app, a separate download.",
       "button": "Get {fullApp}"
     },
+    "preferences": {
+      "sections": {
+        "aiAndTranscription": "AI and transcription",
+        "about": "About"
+      },
+      "loading": "Loading settings…",
+      "save": "Save",
+      "saving": "Saving…",
+      "megabytes": "{mb} MB",
+      "providers": {
+        "none": "Rules only",
+        "custom": "Custom URL"
+      },
+      "key": {
+        "saved": "{label} saved",
+        "replace": "Replace",
+        "optional": "{label} (optional)",
+        "keep": "Keep the saved key",
+        "removeHint": "Leave empty and save to remove it."
+      },
+      "model": {
+        "title": "Moment selection",
+        "subtitle": "Rules pick moments from your clicks, Flare and drawing. A model can also pick the moments you point out while talking.",
+        "apiKey": "API key",
+        "modelLabel": "Model",
+        "modelPlaceholder": "Model name",
+        "modelDefaultPlaceholder": "Model (default {model})",
+        "baseUrlLabel": "Base URL",
+        "baseUrlPlaceholder": "Base URL, for example http://127.0.0.1:8080/v1",
+        "baseUrlDefaultPlaceholder": "Base URL (default {url})",
+        "savedRulesOnly": "Saved. Moments come from rules only.",
+        "savedProvider": "Saved. {provider} picks spoken cues from the next recording."
+      },
+      "transcription": {
+        "title": "Transcription",
+        "macSubtitle": "On this Mac with Apple Speech, while you record. The audio never leaves this Mac.",
+        "windowsSubtitle": "A downloaded model transcribes on this PC. A provider key sends the audio to that provider instead.",
+        "apple": "On this Mac (Apple Speech)",
+        "englishFast": "English, fast (download, about 104 MB)",
+        "multilingual": "All languages (download, about 161 MB)",
+        "withKey": "{provider} (your key)",
+        "providerApiKey": "{provider} API key",
+        "modelLabel": "Transcription model",
+        "modelPlaceholder": "Model (optional, the provider's default otherwise)",
+        "saved": "Saved. Used from the next recording."
+      },
+      "download": {
+        "installed": "Downloaded. Transcribes on this {device}.",
+        "verifying": "Checking the download…",
+        "downloading": "Downloading {received} of {total}",
+        "notDownloaded": "Not downloaded yet ({size}).",
+        "button": "Download"
+      },
+      "privacyNoticeMac": "With no model provider and Apple Speech, nothing leaves this {device}. A model provider receives the transcript text, click labels and a bounded sample of pointer and key events. A transcription key sends the audio to that provider.",
+      "privacyNoticeWindows": "With no model provider and a downloaded transcription model, nothing leaves this {device}. A model provider receives the transcript text, click labels and a bounded sample of pointer and key events. A transcription key sends the audio to that provider.",
+      "about": {
+        "versionHint": "Version {version} · source and setup notes",
+        "sourceHint": "Source and setup notes",
+        "releases": "Releases",
+        "releasesHint": "New versions of Clipy Local"
+      }
+    },
     "empty": "No local recordings yet"
   },
   "whatsNewCard": {
