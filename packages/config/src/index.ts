@@ -197,6 +197,7 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
   if (envKey) draft.apiKey = envKey;
   if (envModel) draft.model = envModel;
 
+  const hostedKinds = TRANSCRIPTION_KINDS.filter((kind) => kind !== "none" && kind !== "local").join(", ");
   const needKey = (who: string) =>
     new ConfigError(
       `Transcription with ${who} needs an API key. Set CLIPY_TRANSCRIBE_API_KEY or "transcription.apiKey" (config file: ${path}).`,
@@ -204,12 +205,30 @@ function resolveTranscription(stored: StoredTranscription | undefined, env: Node
 
   switch (draft.kind) {
     case "none":
+      // An explicit CLIPY_TRANSCRIBE=none opts out even if a key or model is exported in the shell.
+      if (!envKind) {
+        if (envKey) {
+          throw new ConfigError(
+            `Transcription is disabled ("none") in the config file (${path}). Set CLIPY_TRANSCRIBE to a hosted provider (${hostedKinds}) to use CLIPY_TRANSCRIBE_API_KEY.`,
+          );
+        }
+        if (envModel) {
+          throw new ConfigError(
+            `Transcription is disabled ("none") in the config file (${path}). Set CLIPY_TRANSCRIBE to "local" or a hosted provider to use CLIPY_TRANSCRIBE_MODEL.`,
+          );
+        }
+      }
       return { kind: "none" };
     case "local": {
+      if (envKey) {
+        throw new ConfigError(
+          `Local transcription does not use an API key. Set CLIPY_TRANSCRIBE to a hosted provider (${hostedKinds}) to use CLIPY_TRANSCRIBE_API_KEY (config file: ${path}).`,
+        );
+      }
       const model = draft.model ?? "english-fast";
       if (!(LOCAL_TRANSCRIPTION_MODELS as readonly string[]).includes(model)) {
         throw new ConfigError(
-          `The local transcription model must be one of ${LOCAL_TRANSCRIPTION_MODELS.join(", ")} (CLIPY_TRANSCRIBE_MODEL or "transcription.model", config file: ${path}).`,
+          `The local transcription model must be one of ${LOCAL_TRANSCRIPTION_MODELS.join(", ")} (CLIPY_TRANSCRIBE_MODEL or "transcription.model", config file: ${path}). To use a hosted model, set CLIPY_TRANSCRIBE to a hosted provider.`,
         );
       }
       return { kind: "local", model: model as LocalTranscriptionModel };

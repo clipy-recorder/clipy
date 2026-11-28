@@ -237,6 +237,73 @@ describe("transcription presets", () => {
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
     expect(errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "huge" })).message).toMatch(/english-fast, multilingual/);
   });
+
+  it("refuses a transcription key or hosted model without CLIPY_TRANSCRIBE", () => {
+    const missing = { CLIPY_LOCAL_CONFIG: join(dir, "absent.json") };
+    const secret = "sk-transcribe-secret-123";
+
+    // No config file (defaults to local)
+    const missingFileKeyErr = errorOf(() => loadConfig({ ...missing, CLIPY_TRANSCRIBE_API_KEY: secret }));
+    expect(missingFileKeyErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(missingFileKeyErr.message).toContain("CLIPY_TRANSCRIBE_API_KEY");
+    expect(missingFileKeyErr.message).not.toContain(secret);
+
+    const missingFileModelErr = errorOf(() => loadConfig({ ...missing, CLIPY_TRANSCRIBE_MODEL: "whisper-1" }));
+    expect(missingFileModelErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(missingFileModelErr.message).toMatch(/english-fast, multilingual/);
+
+    // Saved local
+    saveConfig({ transcription: { kind: "local" } }, env);
+    const savedLocalKeyErr = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_API_KEY: secret }));
+    expect(savedLocalKeyErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(savedLocalKeyErr.message).not.toContain(secret);
+
+    const savedLocalModelErr = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "whisper-1" }));
+    expect(savedLocalModelErr.message).toContain("CLIPY_TRANSCRIBE");
+
+    // Saved none
+    saveConfig({ transcription: { kind: "none" } }, env);
+    const savedNoneKeyErr = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_API_KEY: secret }));
+    expect(savedNoneKeyErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(savedNoneKeyErr.message).toContain("CLIPY_TRANSCRIBE_API_KEY");
+    expect(savedNoneKeyErr.message).not.toContain(secret);
+
+    const savedNoneModelErr = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "whisper-1" }));
+    expect(savedNoneModelErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(savedNoneModelErr.message).toContain("CLIPY_TRANSCRIBE_MODEL");
+
+    const savedNoneLocalModelErr = errorOf(() => loadConfig({ ...env, CLIPY_TRANSCRIBE_MODEL: "english-fast" }));
+    expect(savedNoneLocalModelErr.message).toContain("CLIPY_TRANSCRIBE");
+
+    // Explicit CLIPY_TRANSCRIBE=local with an API key
+    const explicitLocalKeyErr = errorOf(() => loadConfig({ ...missing, CLIPY_TRANSCRIBE: "local", CLIPY_TRANSCRIBE_API_KEY: secret }));
+    expect(explicitLocalKeyErr.message).toContain("CLIPY_TRANSCRIBE");
+    expect(explicitLocalKeyErr.message).toContain("CLIPY_TRANSCRIBE_API_KEY");
+    expect(explicitLocalKeyErr.message).not.toContain(secret);
+    expect(explicitLocalKeyErr.stack ?? "").not.toContain(secret);
+
+    // Valid local model via env var still works with no file
+    expect(loadConfig({ ...missing, CLIPY_TRANSCRIBE_MODEL: "multilingual" }).transcription).toEqual({
+      kind: "local",
+      model: "multilingual",
+    });
+
+    // Blank env vars are still treated as unset
+    expect(loadConfig({ ...missing, CLIPY_TRANSCRIBE_API_KEY: "   " }).transcription).toEqual({
+      kind: "local",
+      model: "english-fast",
+    });
+
+    // Explicit CLIPY_TRANSCRIBE=none stays an intentional opt-out
+    expect(
+      loadConfig({
+        ...missing,
+        CLIPY_TRANSCRIBE: "none",
+        CLIPY_TRANSCRIBE_API_KEY: secret,
+        CLIPY_TRANSCRIBE_MODEL: "whisper-1",
+      }).transcription,
+    ).toEqual({ kind: "none" });
+  });
 });
 
 describe("saveConfig", () => {
