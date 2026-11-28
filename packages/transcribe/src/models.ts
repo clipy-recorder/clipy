@@ -8,7 +8,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, rename, rm, writeFile, type FileHandle } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -171,6 +171,28 @@ function cancelled(): Error {
   return err;
 }
 
+/**
+ * The model could not be written to disk (full disk, quota, permissions),
+ * as opposed to a network failure: retrying the download will not help.
+ */
+export class ModelWriteError extends Error {
+  readonly code: string | undefined;
+  constructor(what: string, dest: string, cause: unknown) {
+    const code = (cause as NodeJS.ErrnoException | undefined)?.code;
+    const why =
+      code === "ENOSPC"
+        ? "the disk is full"
+        : code === "EDQUOT"
+          ? "the disk quota is used up"
+          : code === "EACCES" || code === "EPERM" || code === "EROFS"
+            ? "the folder cannot be written to"
+            : "the file could not be written";
+    super(`Could not save ${what} to ${dest}: ${why}${code ? ` (${code})` : ""}. Nothing was installed.`, { cause });
+    this.name = "ModelWriteError";
+    this.code = code;
+  }
+}
+
 export class DownloadTooLargeError extends Error {
   constructor(what: string, maxBytes: number) {
     super(`The download of ${what} is larger than the expected ${maxBytes} bytes, so it was stopped. Nothing was installed.`);
@@ -248,7 +270,13 @@ async function saveVerified(
     throw new DownloadTooLargeError(label, maxBytes);
   }
   const hash = createHash("sha256");
-  const fh = await open(dest, "w");
+  let fh: FileHandle;
+  try {
+    fh = await open(dest, "w");
+  } catch (err) {
+    await res.body.cancel().catch(() => undefined);
+    throw new ModelWriteError(label, dest, err);
+  }
   let received = 0;
   try {
     const reader = res.body.getReader();
@@ -262,11 +290,17 @@ async function saveVerified(
         throw new DownloadTooLargeError(label, maxBytes);
       }
       hash.update(value);
-      await fh.write(value);
+      try {
+        await fh.write(value);
+      } catch (err) {
+        // A disk error is not a dropped connection: say what really failed.
+        await reader.cancel().catch(() => undefined);
+        throw new ModelWriteError(label, dest, err);
+      }
       onBytes?.(value.byteLength);
     }
   } catch (err) {
-    if (err instanceof DownloadTooLargeError) throw err;
+    if (err instanceof DownloadTooLargeError || err instanceof ModelWriteError) throw err;
     if (signal?.aborted) throw cancelled();
     if (isStalled()) throw stalled();
     throw new Error(`Could not download ${label}: the connection dropped`);
