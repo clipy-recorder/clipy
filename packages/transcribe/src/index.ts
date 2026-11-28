@@ -35,10 +35,17 @@ export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumErro
 export { ModelNotInstalledError } from "./local.js";
 export { ProviderError } from "./providers/http.js";
 
+const DIARIZE_PROVIDERS = new Set(["deepgram", "assemblyai"]);
+
 /** Transcribe a video or audio file. The audio is extracted to a temporary folder that is always removed. */
 export async function transcribe(inputPath: string, config: TranscriptionConfig, options: TranscribeOptions = {}): Promise<TranscribeResult> {
   const { signal, onProgress } = options;
   throwIfAborted(signal);
+  if (options.diarize && !DIARIZE_PROVIDERS.has(config.kind)) {
+    throw new Error(
+      `Speaker diarization is only supported for whole-file providers (${[...DIARIZE_PROVIDERS].join(", ")}), not "${config.kind}".`,
+    );
+  }
   onProgress?.({ stage: "extract", fraction: 0 });
   // Nothing to extract: only the length is needed (and a video-only file has no audio to extract).
   if (config.kind === "none") {
@@ -85,9 +92,9 @@ function runEngine(input: AudioInput, config: Exclude<TranscriptionConfig, { kin
     case "openai-compatible":
       return transcribeOpenAICompatible(input, config);
     case "deepgram":
-      return transcribeDeepgram(input, config);
+      return transcribeDeepgram(input, { ...config, diarize: options.diarize });
     case "assemblyai":
-      return transcribeAssemblyAI(input, config);
+      return transcribeAssemblyAI(input, { ...config, diarize: options.diarize });
     case "elevenlabs":
       return transcribeElevenLabs(input, config);
     case "gemini":

@@ -146,10 +146,74 @@ describe("deepgram", () => {
     const url = new URL(req.url, "http://x");
     expect(url.pathname).toBe("/v1/listen");
     expect(Object.fromEntries(url.searchParams)).toMatchObject({ model: "nova-3", utterances: "true", detect_language: "true", smart_format: "true" });
+    expect(url.searchParams.has("diarize")).toBe(false);
+    expect("speaker" in r.segments[0]).toBe(false);
     expect(req.headers.authorization).toBe(`Token ${KEY}`);
     expect(req.headers["content-type"]).toBe("audio/wav");
     expect(req.body.subarray(0, 4).toString()).toBe("RIFF");
     expect(req.body.length).toBe(44 + 3 * 32000);
+  });
+
+  it("sends diarize=true and attaches speaker labels on utterances and word fallbacks", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [{ detected_language: "en", alternatives: [{ transcript: "x" }] }],
+          utterances: [
+            { start: 0.25, end: 1.5, transcript: "Hello there.", speaker: 0 },
+            { start: 2, end: 2.75, transcript: "Hi back.", speaker: 1 },
+          ],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(3), { apiKey: KEY, baseUrl: server.url, diarize: true });
+    expect(r.segments).toEqual([
+      { startMs: 250, endMs: 1500, text: "Hello there.", speaker: "0" },
+      { startMs: 2000, endMs: 2750, text: "Hi back.", speaker: "1" },
+    ]);
+    const url = new URL(server.requests[0].url, "http://x");
+    expect(url.searchParams.get("diarize")).toBe("true");
+  });
+
+  it("splits fallback words by speaker when diarize is enabled", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          channels: [
+            {
+              alternatives: [
+                {
+                  words: [
+                    { word: "hi", punctuated_word: "Hi", start: 0, end: 0.3, speaker: 0 },
+                    { word: "sam", punctuated_word: "Sam.", start: 0.3, end: 0.6, speaker: 0 },
+                    { word: "hey", punctuated_word: "Hey", start: 0.65, end: 0.9, speaker: 1 },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(1), { apiKey: KEY, baseUrl: server.url, diarize: true });
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 600, text: "Hi Sam.", speaker: "0" },
+      { startMs: 650, endMs: 900, text: "Hey", speaker: "1" },
+    ]);
+  });
+
+  it("does not emit speaker labels when diarize is off even if the answer carries them", async () => {
+    server = await fakeServer((_req, res) =>
+      json(res, {
+        results: {
+          utterances: [{ start: 0, end: 1, transcript: "Hello.", speaker: 0 }],
+        },
+      }),
+    );
+    const r = await transcribeDeepgram(await audioInput(1), { apiKey: KEY, baseUrl: server.url, diarize: false });
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 1000, text: "Hello." }]);
+    expect("speaker" in r.segments[0]).toBe(false);
+    expect(new URL(server.requests[0].url, "http://x").searchParams.has("diarize")).toBe(false);
   });
 
   it("falls back to words when there are no utterances", async () => {
@@ -229,8 +293,66 @@ describe("assemblyai", () => {
     });
     const r = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url, model: "universal" }, { pollIntervalMs: 5 });
     expect(JSON.parse(server.requests[1].body.toString()).speech_models).toEqual(["universal"]);
+    expect(JSON.parse(server.requests[1].body.toString())).not.toHaveProperty("speaker_labels");
     expect(r.segments).toEqual([{ startMs: 0, endMs: 900, text: "Hi." }]);
     expect(r.engine).toBe("assemblyai:universal");
+  });
+
+  it("sends speaker_labels when diarize is enabled and keeps speaker on utterances and words", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
+      if (req.method === "POST") {
+        return json(res, {
+          id: "t-diarize",
+          status: "completed",
+          utterances: [
+            { text: "First turn.", start: 100, end: 1100, speaker: "A" },
+            { text: "Second turn.", start: 1200, end: 2200, speaker: "B" },
+          ],
+        });
+      }
+      json(res, {}, 404);
+    });
+    const r = await transcribeAssemblyAI(await audioInput(3), { apiKey: KEY, baseUrl: server.url, diarize: true }, { pollIntervalMs: 5 });
+    expect(JSON.parse(server.requests[1].body.toString())).toMatchObject({ speaker_labels: true });
+    expect(r.segments).toEqual([
+      { startMs: 100, endMs: 1100, text: "First turn.", speaker: "A" },
+      { startMs: 1200, endMs: 2200, text: "Second turn.", speaker: "B" },
+    ]);
+  });
+
+  it("splits AssemblyAI words on speaker change when utterances are absent", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
+      return json(res, {
+        id: "t-words",
+        status: "completed",
+        words: [
+          { text: "One", start: 0, end: 200, speaker: "A" },
+          { text: "two", start: 200, end: 400, speaker: "B" },
+        ],
+      });
+    });
+    const r = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url, diarize: true }, { pollIntervalMs: 5 });
+    expect(r.segments).toEqual([
+      { startMs: 0, endMs: 200, text: "One", speaker: "A" },
+      { startMs: 200, endMs: 400, text: "two", speaker: "B" },
+    ]);
+  });
+
+  it("omits speaker_labels and speaker fields when diarize is off", async () => {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
+      return json(res, {
+        id: "t-off",
+        status: "completed",
+        utterances: [{ text: "Hi.", start: 0, end: 500, speaker: "A" }],
+      });
+    });
+    const r = await transcribeAssemblyAI(await audioInput(1), { apiKey: KEY, baseUrl: server.url, diarize: false }, { pollIntervalMs: 5 });
+    expect(JSON.parse(server.requests[1].body.toString())).not.toHaveProperty("speaker_labels");
+    expect(r.segments).toEqual([{ startMs: 0, endMs: 500, text: "Hi." }]);
+    expect("speaker" in r.segments[0]).toBe(false);
   });
 
   it("fails cleanly when the job errors, without the provider's message", async () => {
@@ -485,5 +607,19 @@ describe("response safety", () => {
     await expect(requestJson("deepgram", `${server.url}/streamed`, {}, undefined, 1024 * 1024)).resolves.toMatchObject({
       text: expect.any(String),
     });
+  });
+});
+
+describe("diarize support", () => {
+  it("rejects chunked and non-diarizing engines when diarize is enabled", async () => {
+    for (const config of [
+      { kind: "none" as const },
+      { kind: "local" as const, model: "english-fast" as const },
+      { kind: "openai-compatible" as const, baseUrl: "http://127.0.0.1:1", apiKey: "", model: "m" },
+      { kind: "gemini" as const, apiKey: KEY },
+      { kind: "elevenlabs" as const, apiKey: KEY },
+    ]) {
+      await expect(transcribe("unused.wav", config, { diarize: true })).rejects.toThrow(/whole-file providers/i);
+    }
   });
 });

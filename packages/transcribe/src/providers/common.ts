@@ -151,3 +151,14 @@ export function wholePieceSegment(text: string, durSec: number, silences: Silenc
 export function finiteNumber(v: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+
+/** Normalize a provider speaker identifier (`0`, `"A"`, …) into an optional `{ speaker }` field when enabled. */
+export function speakerField(speaker: string | number | null | undefined, enabled = false): { speaker?: string } {
+  if (!enabled) return {};
+  if (typeof speaker === "number") return Number.isFinite(speaker) ? { speaker: String(speaker) } : {};
+  if (typeof speaker === "string") {
+    const trimmed = speaker.trim();
+    return trimmed ? { speaker: trimmed } : {};
+  }
+  return {};
+}

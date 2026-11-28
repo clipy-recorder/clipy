@@ -3,6 +3,8 @@ export interface TranscriptSegment {
   startMs: number;
   endMs: number;
   text: string;
+  /** Speaker label when `diarize` is enabled and the provider reports one. */
+  speaker?: string;
 }
 
 export type LocalModelId = "english-fast" | "multilingual";
@@ -58,4 +60,15 @@ export interface TranscribeOptions {
    * this package's location.
    */
   speechEngine?: string;
+  /**
+   * Ask the provider for speaker labels on each segment (`TranscriptSegment.speaker`).
+   * Off (`false`) by default.
+   *
+   * Supported only for whole-file providers with diarization (`deepgram`,
+   * `assemblyai`). Chunked engines (`local`, `openai-compatible`, `gemini`)
+   * transcribe each piece independently, so speaker labels from different
+   * pieces would not match across cuts; passing `diarize: true` with an
+   * unsupported engine throws an error rather than returning mismatched IDs.
+   */
+  diarize?: boolean;
 }

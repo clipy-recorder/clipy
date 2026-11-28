@@ -3,18 +3,19 @@ import { z } from "zod";
 import { readFile } from "node:fs/promises";
 import { joinUrl, ProviderError, requestJson, sleep } from "./http.js";
 import { groupWordsIntoSegments, toTimeline } from "../chunking.js";
-import type { AudioInput, EngineOutput } from "./common.js";
+import { speakerField, type AudioInput, type EngineOutput } from "./common.js";
 
 export const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com";
 
+const SpeakerId = z.union([z.string(), z.number()]).nullish();
 const Upload = z.object({ upload_url: z.string() });
 const Job = z
   .object({
     id: z.string(),
     status: z.string(),
     language_code: z.string().nullish(),
-    words: z.array(z.object({ text: z.string(), start: z.number(), end: z.number() }).passthrough()).nullish(),
-    utterances: z.array(z.object({ text: z.string(), start: z.number(), end: z.number() }).passthrough()).nullish(),
+    words: z.array(z.object({ text: z.string(), start: z.number(), end: z.number(), speaker: SpeakerId }).passthrough()).nullish(),
+    utterances: z.array(z.object({ text: z.string(), start: z.number(), end: z.number(), speaker: SpeakerId }).passthrough()).nullish(),
   })
   .passthrough();
 
@@ -26,7 +27,7 @@ export interface AssemblyAILimits {
 
 export async function transcribeAssemblyAI(
   input: AudioInput,
-  config: { apiKey: string; model?: string; baseUrl?: string },
+  config: { apiKey: string; model?: string; baseUrl?: string; diarize?: boolean },
   limits: AssemblyAILimits = {},
 ): Promise<EngineOutput> {
   const provider = "assemblyai";
@@ -49,6 +50,7 @@ export async function transcribeAssemblyAI(
 
   const body: Record<string, unknown> = { audio_url: up.data.upload_url, language_detection: true };
   if (config.model) body.speech_models = [config.model];
+  if (config.diarize) body.speaker_labels = true;
   const created = Job.safeParse(
     await requestJson(
       provider,
@@ -76,8 +78,10 @@ export async function transcribeAssemblyAI(
   // Times are milliseconds.
   const segments =
     job.utterances && job.utterances.length > 0
-      ? job.utterances.map((u) => ({ start: u.start / 1000, end: u.end / 1000, text: u.text }))
-      : groupWordsIntoSegments((job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text })));
+      ? job.utterances.map((u) => ({ start: u.start / 1000, end: u.end / 1000, text: u.text, ...speakerField(u.speaker, config.diarize) }))
+      : groupWordsIntoSegments(
+          (job.words ?? []).map((w) => ({ start: w.start / 1000, end: w.end / 1000, text: w.text, ...speakerField(w.speaker, config.diarize) })),
+        );
   input.onProgress?.(1);
   return {
     segments: toTimeline(segments),
