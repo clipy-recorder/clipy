@@ -216,10 +216,15 @@ export async function readWavSlice(path: string, info: WavInfo, startSec: number
   const startByte = Math.min(info.dataBytes, Math.max(0, Math.round(startSec * info.sampleRate)) * frame);
   const endByte = Math.min(info.dataBytes, Math.round((startSec + durSec) * info.sampleRate) * frame);
   const len = Math.max(0, endByte - startByte);
-  const pcm = Buffer.alloc(len);
+  const pcm = Buffer.allocUnsafe(len);
   const fh = await open(path, "r");
   try {
-    await fh.read(pcm, 0, len, info.dataOffset + startByte);
+    let offset = 0;
+    while (offset < len) {
+      const { bytesRead } = await fh.read(pcm, offset, len - offset, info.dataOffset + startByte + offset);
+      if (bytesRead === 0) throw new Error(`${path} ended before the requested audio slice`);
+      offset += bytesRead;
+    }
   } finally {
     await fh.close();
   }

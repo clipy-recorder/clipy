@@ -105,7 +105,7 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
       kept.push(i);
     } else if ((e.kind === "key_down" || e.kind === "key_up") && typeof code === "number" && CONTROL_KEYCODES.has(code)) {
       kept.push(i);
-      held = e.kind === "key_down" ? held + 1 : 0;
+      held = e.kind === "key_down" ? held + 1 : Math.max(0, held - 1);
     } else if (e.kind === "key_down" && held > 0 && typeof code === "number" && !isModifierKeycode(code)) {
       kept.push(i);
     } else if (e.kind === "key_down" || e.kind === "down") {
