@@ -64,6 +64,21 @@ examples in `plugins/` are always welcome without one.
 The packages form one pnpm workspace at the root. `desktop/` is its own pnpm
 project with its own lockfile.
 
+## Plugins
+
+The Record button plugin (`plugins/clipy-record`) has two levels of tests:
+
+1. **Helper tests** (`scripts/plugin-record-helpers.test.mjs`) run with
+   `node --test` and cover the pure functions in `display.ts`, `cloud.ts`,
+   `signin.ts` and `register.tsx` (formatting, parsing, display matching,
+   sign-in codes). CI runs these on every PR.
+
+2. **Full integration tests** (`plugins/clipy-record/hooks/register.test.tsx`,
+   ~1,000 lines) use the `claude-code/testing` framework and need a
+   signed-in Claude Code session. Run them locally with
+   `claude plugin test plugins/clipy-record`. These cannot run headless in
+   CI without secrets.
+
 ## Packages
 
 You need Node.js 20.19 or newer and pnpm (the version in `package.json`,
