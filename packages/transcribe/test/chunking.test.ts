@@ -167,7 +167,55 @@ describe("mergePieces", () => {
     const merged = mergePieces([{ plan: plan[0], segments: [{ start: 1, end: 3, text: "a" }, { start: 2.5, end: 4, text: "b" }] }]);
     expect(merged[1]).toEqual({ startMs: 3000, endMs: 4000, text: "b" });
   });
+
+  it("stays sorted, never overlaps and stays inside the recording for random layouts", () => {
+    for (let seed = 1; seed <= 300; seed++) {
+      const rnd = seededRandom(seed);
+      const total = 1 + rnd() * 1500;
+      const silences: SilenceSpan[] = [];
+      for (let t = rnd() * 50; t < total; t += 2 + rnd() * 120) silences.push({ startSec: t, endSec: t + 0.2 + rnd() * 3 });
+      for (const [model, opts] of Object.entries(LOCAL_CHUNKING)) {
+        const pieces = planChunks(silences, total, opts).map((plan) => ({ plan, segments: madeUpSegments(rnd, plan.extractDurSec) }));
+        const problem = timelineProblem(mergePieces(pieces), Math.round(total * 1000));
+        expect(problem, `seed ${seed}, ${model}`).toBeNull();
+      }
+    }
+  });
 });
+
+/** A small deterministic generator, so a failing seed can be replayed. */
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => (s = (s * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
+}
+
+/**
+ * Segments relative to one piece's audio, all inside it. A segment often
+ * starts before the previous one ends, as engine output can.
+ */
+function madeUpSegments(rnd: () => number, durSec: number): Array<{ start: number; end: number; text: string }> {
+  const segs: Array<{ start: number; end: number; text: string }> = [];
+  let start = rnd() * 2;
+  while (start < durSec) {
+    const len = 0.1 + rnd() * 6;
+    segs.push({ start, end: Math.min(durSec, start + len), text: `w${segs.length}` });
+    start += rnd() * len * 1.5;
+  }
+  return segs;
+}
+
+/** The first way the merged timeline breaks its promise, or null. */
+function timelineProblem(segs: Array<{ startMs: number; endMs: number }>, totalMs: number): string | null {
+  for (let i = 0; i < segs.length; i++) {
+    const { startMs, endMs } = segs[i];
+    if (startMs < 0) return `segment ${i} starts at ${startMs} ms`;
+    if (endMs < startMs) return `segment ${i} ends at ${endMs} ms, before its start ${startMs} ms`;
+    if (endMs > totalMs) return `segment ${i} ends at ${endMs} ms, after the recording (${totalMs} ms)`;
+    // Not before the previous end also means sorted by start.
+    if (i > 0 && startMs < segs[i - 1].endMs) return `segment ${i} starts at ${startMs} ms, before segment ${i - 1} ends at ${segs[i - 1].endMs} ms`;
+  }
+  return null;
+}
 
 describe("grouping", () => {
   it("groups tokens at pauses", () => {
