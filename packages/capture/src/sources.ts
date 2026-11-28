@@ -25,7 +25,7 @@ export interface ScreenInfo extends Rect {
 export function parseXrandrMonitors(text: string): ScreenInfo[] {
   const out: ScreenInfo[] = [];
   for (const line of text.split("\n")) {
-    const m = /^\s*(\d+):\s+([+*]*)(\S+)\s+(\d+)\/\d+x(\d+)\/\d+\+(-?\d+)\+(-?\d+)/.exec(line);
+    const m = /^\s*(\d+):\s+([+*]*)(\S+)\s+(\d+)\/\d+x(\d+)\/\d+([+-]\d+)([+-]\d+)/.exec(line);
     if (!m) continue;
     out.push({
       name: m[3],
