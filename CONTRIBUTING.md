@@ -88,9 +88,11 @@ next sync keeps it.
 ## Desktop app
 
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
-the Command Line Tools. On Windows, Visual Studio Build Tools with the C++
-workload and a shared FFmpeg 7 build with `FFMPEG_DIR` pointing at it. Full
-build notes are in [desktop/README.md](desktop/README.md).
+the Command Line Tools (the desktop scripts automatically use
+`desktop/scripts/xcodebuild-cidre-shims.sh` when full Xcode is not installed).
+On Windows, Visual Studio Build Tools with the C++ workload and a shared FFmpeg
+7 build with `FFMPEG_DIR` pointing at it. Full build notes are in
+[desktop/README.md](desktop/README.md).
 
 ```bash
 cd desktop

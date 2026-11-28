@@ -18,9 +18,58 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { argv, env, exit, platform } from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { stageSherpaOnnx } from "./stage-sherpa-onnx.mjs";
+
+const scriptsDir = dirname(fileURLToPath(import.meta.url));
+const tauriTargetDir = resolve(scriptsDir, "..", "src-tauri", "target");
+
+/**
+ * macOS with only Xcode Command Line Tools (no full Xcode.app): `cidre`'s build
+ * script invokes `xcodebuild` for `pomace.xcodeproj`, which fails under CLT.
+ * Put a wrapper around `scripts/xcodebuild-cidre-shims.sh` first on PATH when
+ * `/usr/bin/xcodebuild -version` fails.
+ */
+function ensureMacosXcodebuildShim(childEnv) {
+  if (platform !== "darwin") return;
+  const probe = spawnSync("/usr/bin/xcodebuild", ["-version"], { stdio: "ignore" });
+  if (probe.status === 0) return;
+
+  const shimDir = join(tauriTargetDir, "xcodebuild-shim");
+  const shimBin = join(shimDir, "xcodebuild");
+  const shimScript = join(scriptsDir, "xcodebuild-cidre-shims.sh");
+  mkdirSync(shimDir, { recursive: true });
+  writeFileSync(shimBin, `#!/bin/bash\nexec /bin/bash "${shimScript}" "$@"\n`, "utf8");
+  chmodSync(shimBin, 0o755);
+  childEnv.PATH = `${shimDir}:${childEnv.PATH ?? ""}`;
+  console.log("[tauri-local] Xcode.app not found; using Command Line Tools cidre shim for xcodebuild");
+}
+
+/**
+ * macOS `tauri dev` runs `target/debug/clipy-desktop` outside an `.app` bundle,
+ * so `@executable_path/../Frameworks/Spacedrive.framework` resolves to
+ * `target/Frameworks/Spacedrive.framework`. Symlink it to the unpacked native
+ * FFmpeg framework (SIP strips `DYLD_FALLBACK_LIBRARY_PATH` across shells).
+ */
+function ensureMacosFfmpegFrameworkLink() {
+  if (platform !== "darwin") return;
+  const frameworkSrc = join(tauriTargetDir, "native-deps", "Spacedrive.framework");
+  if (!existsSync(frameworkSrc)) return;
+  const frameworksDir = join(tauriTargetDir, "Frameworks");
+  const frameworkLink = join(frameworksDir, "Spacedrive.framework");
+  mkdirSync(frameworksDir, { recursive: true });
+  try {
+    if (lstatSync(frameworkLink).isSymbolicLink()) unlinkSync(frameworkLink);
+    else return;
+  } catch {
+    // Link does not exist yet.
+  }
+  symlinkSync(join("..", "native-deps", "Spacedrive.framework"), frameworkLink);
+}
 
 const [command, ...extra] = argv.slice(2);
 if (command !== "dev" && command !== "build") {
@@ -34,6 +83,8 @@ const CARGO_ARGS = [];
 // tauri.conf.json is the local edition's config in this repository.
 const configs = [];
 const childEnv = { ...env };
+ensureMacosXcodebuildShim(childEnv);
+ensureMacosFfmpegFrameworkLink();
 if (platform === "win32") {
   try {
     const staged = await stageSherpaOnnx();
