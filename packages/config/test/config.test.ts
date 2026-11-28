@@ -232,6 +232,24 @@ describe("transcription presets", () => {
     });
   });
 
+  it("refuses CLIPY_TRANSCRIBE_BASE_URL with a keyed provider, without showing the key", () => {
+    for (const kind of ["deepgram", "assemblyai", "elevenlabs", "gemini"]) {
+      const error = errorOf(() =>
+        loadConfig({
+          ...env,
+          CLIPY_TRANSCRIBE: kind,
+          CLIPY_TRANSCRIBE_API_KEY: "sk-secret-123",
+          CLIPY_TRANSCRIBE_MODEL: "some-model",
+          CLIPY_TRANSCRIBE_BASE_URL: "http://127.0.0.1:8000/v1",
+        }),
+      );
+      expect(error.message, kind).toContain("CLIPY_TRANSCRIBE_BASE_URL");
+      expect(error.message, kind).toContain(kind);
+      expect(error.message, kind).not.toContain("sk-secret-123");
+      expect(error.stack ?? "", kind).not.toContain("sk-secret-123");
+    }
+  });
+
   it("picks the multilingual local model", () => {
     saveConfig({ transcription: { kind: "local", model: "multilingual" } }, env);
     expect(loadConfig(env).transcription).toEqual({ kind: "local", model: "multilingual" });
