@@ -279,6 +279,73 @@ describe("a malformed file", () => {
     expect(error.stack ?? "").not.toContain("sk-secret-123");
   });
 
+  it("reports line and column for an unquoted value without leaking it", () => {
+    writeConfig('{\n  "model": { "preset": "openrouter", "apiKey": sk-or-123 }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toContain(file);
+    expect(error.message).toContain("not valid JSON at line 2, column 48.");
+    expect(error.message).not.toContain("sk-or-123");
+    expect(error.stack ?? "").not.toContain("sk-or-123");
+  });
+
+  it("reports line and column for a single-quoted string without leaking it", () => {
+    writeConfig('{\n  "transcription": { "kind": \'deepgram\' }\n}');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toContain(file);
+    expect(error.message).toContain("not valid JSON at line 2, column 30.");
+    expect(error.message).not.toContain("deepgram");
+    expect(error.stack ?? "").not.toContain("deepgram");
+  });
+
+  it("reports the exact line and column for truncated JSON", () => {
+    writeConfig('{\n  "model": { "preset": "openai"');
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toContain(file);
+    expect(error.message).toContain("not valid JSON at line 2, column 32.");
+    expect(error.message).not.toContain("openai");
+    expect(error.stack ?? "").not.toContain("openai");
+  });
+
+  it.each([
+    {
+      label: "a bad escape sequence",
+      text: '{\n  "model": { "apiKey": "sk-\\xsecret" }\n}',
+      expected: "at line 2, column 29.",
+      secret: "xsecret",
+    },
+    {
+      label: "a bad unicode escape",
+      text: '{\n  "model": { "apiKey": "\\u12g4-secret" }\n}',
+      expected: "at line 2, column 29.",
+      secret: "secret",
+    },
+    {
+      label: "trailing tokens",
+      text: '{"version": 1}\n{"apiKey": "sk-trailing"}',
+      expected: "at line 2, column 1.",
+      secret: "sk-trailing",
+    },
+    {
+      label: "a malformed literal",
+      text: '{\n  "flag": tru,\n  "apiKey": "sk-lit"\n}',
+      expected: "at line 2, column 14.",
+      secret: "sk-lit",
+    },
+    {
+      label: "a number with a leading zero",
+      text: '{\n  "version": 01,\n  "apiKey": "sk-num"\n}',
+      expected: "at line 2, column 15.",
+      secret: "sk-num",
+    },
+  ])("reports line and column for $label without leaking text", ({ text, expected, secret }) => {
+    writeConfig(text);
+    const error = errorOf(() => loadConfig(env));
+    expect(error.message).toContain(file);
+    expect(error.message).toContain(`not valid JSON ${expected}`);
+    expect(error.message).not.toContain(secret);
+    expect(error.stack ?? "").not.toContain(secret);
+  });
+
   it("names the bad field", () => {
     writeConfig({ model: { preset: "anthropic", apiKey: "sk-secret-123" } });
     const error = errorOf(() => loadConfig(env));
