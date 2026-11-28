@@ -369,3 +369,68 @@ describe("long typing sessions", () => {
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
 });
+
+describe("planMoments secret & PII redaction gate", () => {
+  it("scrubs secrets from transcript and click labels before chatJSON without mutating originals", async () => {
+    const secretKey = "sk-proj-abcdefghijklmnopqrstuvwxyz123456";
+    const secretEmail = "alice@secret-corp.com";
+    const secretClick = "Copy token ghp_1234567890abcdefghijklmnopqrstuvwxyz";
+
+    const input: LocalMomentInput = {
+      ...payload(),
+      transcript: [
+        { startMs: 0, endMs: 2000, text: `Paste ${secretKey} and email ${secretEmail}` },
+        { startMs: 2500, endMs: 4000, text: `Retry with ${secretKey}` },
+      ],
+      clickElements: [
+        { time_ms: 2100, role: "AXButton", label: secretClick },
+      ],
+    };
+
+    const { baseUrl, seen } = await fakeProvider({ moments: [] });
+    await planMoments(input, {
+      provider: { baseUrl, apiKey: "provider-key", model: "test/model" },
+      redaction: {},
+    });
+
+    const sentText = JSON.stringify(seen.body);
+    expect(sentText).not.toContain(secretKey);
+    expect(sentText).not.toContain(secretEmail);
+    expect(sentText).not.toContain("ghp_1234567890abcdefghijklmnopqrstuvwxyz");
+    expect(sentText).toContain("[REDACTED_API_KEY_1]");
+    expect(sentText).toContain("[REDACTED_EMAIL_1]");
+    expect(sentText).toContain("[REDACTED_API_KEY_2]");
+
+    // Original input objects remain completely unmutated
+    expect(input.transcript[0].text).toContain(secretKey);
+    expect(input.transcript[0].text).toContain(secretEmail);
+    expect(input.clickElements[0].label).toBe(secretClick);
+  });
+
+  it("leaves input untouched when redaction is omitted (opt-in)", async () => {
+    const secretEmail = "bob@example.com";
+    const input: LocalMomentInput = {
+      ...payload(),
+      transcript: [{ startMs: 0, endMs: 2000, text: `Email ${secretEmail}` }],
+    };
+
+    const { baseUrl, seen } = await fakeProvider({ moments: [] });
+    await planMoments(input, {
+      provider: { baseUrl, apiKey: "provider-key", model: "test/model" },
+    });
+
+    expect(JSON.stringify(seen.body)).toContain(secretEmail);
+  });
+
+  it("does not run redaction when no provider is configured (rules-only)", async () => {
+    const secretKey = "sk-proj-abcdefghijklmnopqrstuvwxyz123456";
+    const input: LocalMomentInput = {
+      ...payload(),
+      transcript: [{ startMs: 0, endMs: 2000, text: `Key ${secretKey}` }],
+    };
+
+    const { planner } = await planMoments(input, { redaction: {} });
+    expect(planner).toBe("rules");
+    expect(input.transcript[0].text).toContain(secretKey);
+  });
+});

@@ -2,7 +2,15 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ConfigError, configPath, loadConfig, presetProvider, saveConfig, type ModelPreset } from "../src/index.js";
+import {
+  ConfigError,
+  configPath,
+  loadConfig,
+  presetProvider,
+  REDACTION_CLASSES,
+  saveConfig,
+  type ModelPreset,
+} from "../src/index.js";
 
 let dir: string;
 let file: string;
@@ -69,6 +77,12 @@ describe("loadConfig defaults", () => {
       model: null,
       modelPreset: null,
       transcription: { kind: "local", model: "english-fast" },
+      redaction: {
+        enabled: false,
+        classes: [...REDACTION_CLASSES],
+        allowlist: [],
+        custom: [],
+      },
       telemetry: false,
     });
   });
@@ -306,5 +320,44 @@ describe("a malformed file", () => {
     writeConfig("{ broken");
     expect(errorOf(() => saveConfig({ transcription: { kind: "none" } }, env)).message).toMatch(/not valid JSON/);
     expect(readFileSync(file, "utf8")).toBe("{ broken");
+  });
+});
+
+describe("redaction settings", () => {
+  it("loads redaction settings from the file", () => {
+    saveConfig(
+      {
+        redaction: {
+          enabled: true,
+          classes: ["apiKeys", "emails"],
+          allowlist: ["support@clipy.online"],
+          custom: [{ pattern: "PROJ-[0-9]+", label: "PROJECT" }],
+        },
+      },
+      env,
+    );
+    expect(loadConfig(env).redaction).toEqual({
+      enabled: true,
+      classes: ["apiKeys", "emails"],
+      allowlist: ["support@clipy.online"],
+      custom: [{ pattern: "PROJ-[0-9]+", label: "PROJECT" }],
+    });
+  });
+
+  it("lets CLIPY_REDACT=1 enable all default classes and CLIPY_REDACT=0 disable", () => {
+    expect(loadConfig({ ...env, CLIPY_REDACT: "1" }).redaction).toEqual({
+      enabled: true,
+      classes: [...REDACTION_CLASSES],
+      allowlist: [],
+      custom: [],
+    });
+    saveConfig({ redaction: { enabled: true } }, env);
+    expect(loadConfig({ ...env, CLIPY_REDACT: "0" }).redaction.enabled).toBe(false);
+  });
+
+  it("parses comma-separated class names from CLIPY_REDACT", () => {
+    const cfg = loadConfig({ ...env, CLIPY_REDACT: "apiKeys, jwt, unknownClass, emails" });
+    expect(cfg.redaction.enabled).toBe(true);
+    expect(cfg.redaction.classes).toEqual(["apiKeys", "jwt", "emails"]);
   });
 });
