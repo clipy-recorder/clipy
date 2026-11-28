@@ -10,7 +10,7 @@ const files = readdirSync(generated).filter((f) => f.endsWith(".ts"));
 
 describe("generated files", () => {
   it("exist", () => {
-    expect(files.sort()).toEqual(["drawStrokes.ts", "keyMomentsCursorContext.ts", "keyMomentsFusion.ts", "localMomentPlan.ts", "types.ts"]);
+    expect(files.sort()).toEqual(["browserDiagnostics.ts", "drawStrokes.ts", "keyMomentsCursorContext.ts", "keyMomentsFusion.ts", "localMomentPlan.ts", "types.ts"]);
   });
 
   it.each(files)("%s carries the license header and no comments beyond it", (name) => {

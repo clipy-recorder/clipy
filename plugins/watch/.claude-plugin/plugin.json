@@ -1,7 +1,7 @@
 {
   "name": "watch",
   "displayName": "Watch",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Let Claude Code watch any video. /watch a YouTube URL, a Loom link or a video file on your machine, then ask about it. Clipy turns the video into an AREC file (transcript, key moments and timestamps in plain Markdown) on your machine. Free, no account.",
   "author": {
     "name": "Clipy",

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // GENERATED from lib/queue/keyMomentsCursorContext.ts Do not edit here. Edit the monorepo source and re-run oss/scripts/sync-from-monorepo.mjs.
 import type { DrawStroke } from './drawStrokes.js';
+import { normalizeElementSelector } from './browserDiagnostics.js';
 const CLICK_CLUSTER_GAP_MS = 1500;
 const CLICK_CLUSTER_RADIUS_PX = 28;
 const SCROLL_CLUSTER_GAP_MS = 900;
@@ -190,6 +191,7 @@ export interface ClickCluster {
     readonly y: number;
     count: number;
     readonly label: string | null;
+    readonly selector?: string | null;
 }
 export interface CaptureRect {
     readonly x: number;
@@ -203,6 +205,7 @@ export interface CaptureSample extends CaptureRect {
 interface ClickElementEntry {
     readonly time_ms: number;
     readonly label: string | null;
+    readonly selector: string | null;
 }
 interface PromptClick {
     readonly t: number;
@@ -290,7 +293,7 @@ export function buildCursorEvidenceFromTrack(parsed: unknown, opts: CursorEviden
     };
     const clicks = opts.timelineOnly
         ? []
-        : clusterClicks(events, parseClickElements(parsed.click_elements)).map((click) => inPicture(click.x, click.y, click.tMs) ? click : { ...click, label: null });
+        : clusterClicks(events, parseClickElements(parsed.click_elements)).map((click) => inPicture(click.x, click.y, click.tMs) ? click : { ...click, label: null, selector: null });
     const moves = events
         .filter((event) => event.kind === 'move' && event.x !== null && event.y !== null)
         .map((event) => ({ tMs: event.time_ms, x: event.x ?? 0, y: event.y ?? 0 }))
@@ -421,10 +424,13 @@ function clusterClicks(events: readonly CursorEvent[], clickElements: readonly C
     const clusters: ClickCluster[] = [];
     for (const event of downs) {
         const last = clusters[clusters.length - 1];
-        const label = clickLabelAt(clickElements, event.time_ms);
+        const element = clickElementAt(clickElements, event.time_ms);
+        const label = element?.label ?? null;
+        const selector = element?.selector ?? null;
         if (last && event.time_ms - last.tMs <= CLICK_CLUSTER_GAP_MS &&
             Math.hypot((event.x ?? 0) - last.x, (event.y ?? 0) - last.y) <= CLICK_CLUSTER_RADIUS_PX &&
-            (!label || !last.label || label === last.label)) {
+            (!label || !last.label || label === last.label) &&
+            (!selector || !last.selector || selector === last.selector)) {
             last.count += 1;
             continue;
         }
@@ -434,14 +440,15 @@ function clusterClicks(events: readonly CursorEvent[], clickElements: readonly C
             y: event.y ?? 0,
             count: 1,
             label,
+            ...(selector ? { selector } : {}),
         });
     }
     return clusters;
 }
-function clickLabelAt(elements: readonly ClickElementEntry[], tMs: number): string | null {
+function clickElementAt(elements: readonly ClickElementEntry[], tMs: number): ClickElementEntry | null {
     for (const entry of elements) {
-        if (Math.abs(entry.time_ms - tMs) <= 50 && entry.label) {
-            return entry.label;
+        if (Math.abs(entry.time_ms - tMs) <= 50 && (entry.label || entry.selector)) {
+            return entry;
         }
     }
     return null;
@@ -684,7 +691,11 @@ function parseClickElements(value: unknown): ClickElementEntry[] {
         if (timeMs === null)
             return [];
         const label = readString(entry, 'label')?.replace(/\s+/g, ' ').trim().slice(0, 80) ?? null;
-        return [{ time_ms: timeMs, label: label && label.length > 0 ? label : null }];
+        return [{
+                time_ms: timeMs,
+                label: label && label.length > 0 ? label : null,
+                selector: normalizeElementSelector(entry.selector),
+            }];
     });
 }
 function parseCaptureRect(value: unknown): CaptureRect | null {

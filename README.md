@@ -39,6 +39,14 @@
 	<a href="https://www.facebook.com/people/Clipy/61571411081419/">Facebook</a>
 </p>
 
+<p align="center">
+	<a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl"><img src="https://img.shields.io/badge/Add_to_Chrome-free_to_start-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Add Clipy to Chrome"></a>
+</p>
+
+<p align="center">
+	<b>Try it in your browser.</b> Install the <a href="https://chromewebstore.google.com/detail/clipy-screen-recorder-for/kpoeghpnpjdaglohmnemgkljahinendl">Chrome extension</a>, record a bug, share the link, and see how Clipy turns it into something your team and your AI agent can act on.
+</p>
+
 ## Give your AI agent eyes in 30 seconds
 
 In Claude Code:

@@ -3,7 +3,7 @@ name: watch
 description: Watch a YouTube video, a Loom link or a video file for the user and answer questions about it with timestamps. Use whenever the user shares a YouTube URL, a Loom share link or a path to a video file, or asks you to watch, summarize, take notes on or follow along with a video ("watch this", "what does this video say", "implement what this video shows").
 argument-hint: "<YouTube URL | Loom link | path to a video file> [question]"
 tags: [video, youtube, loom, transcript, arec, claude-code]
-allowed-tools: Read, Bash(command -v clipy), Bash(clipy context import *), Bash(clipy context read *), Bash(clipy local status*), Bash(clipy doctor*), Bash(npx -y @clipy/cli@0.21.0 context import *), Bash(npx -y @clipy/cli@0.21.0 context read *), Bash(npx -y @clipy/cli@0.21.0 local status*), Bash(npx -y @clipy/cli@0.21.0 doctor*)
+allowed-tools: Read
 ---
 
 # Watch a video

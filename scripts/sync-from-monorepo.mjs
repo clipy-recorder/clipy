@@ -70,6 +70,9 @@ const MOMENTS_IMPORTS = {
   "@/lib/server/momentPlanner": "./types.js",
   "@/lib/models/keyMoments": "./types.js",
   "@/lib/animation-editor/drawStrokes": "./drawStrokes.js",
+  // lib/elementSelector re-exports these validators from lib/browserDiagnostics,
+  // which has no imports and already ships in the public extension.
+  "@/lib/elementSelector": "./browserDiagnostics.js",
   "@/lib/queue/keyMomentsCursorContext": "./keyMomentsCursorContext.js",
   "@/lib/queue/keyMomentsFusion": "./keyMomentsFusion.js",
   "@/lib/llm/openrouter": "../llm.js",
@@ -210,6 +213,7 @@ function main() {
     ["queue/keyMomentsCursorContext.ts", "keyMomentsCursorContext.ts"],
     ["queue/keyMomentsFusion.ts", "keyMomentsFusion.ts"],
     ["animation-editor/drawStrokes.ts", "drawStrokes.ts"],
+    ["browserDiagnostics.ts", "browserDiagnostics.ts"],
     ["server/localMomentPlan.ts", "localMomentPlan.ts"],
   ];
   for (const [src, dest] of copies) {

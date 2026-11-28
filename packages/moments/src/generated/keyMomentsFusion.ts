@@ -57,10 +57,19 @@ interface PointerAnchor {
     readonly confidence: number;
     readonly dwell: HoverDwell | null;
 }
-export function withClickedLabel(caption: string, label: string | null): string {
-    if (!label)
+const MAX_CAPTION_CHARS = 220;
+export function clickTargetPhrase(label: string | null, selector: string | null | undefined, room = MAX_CAPTION_CHARS): string | null {
+    const named = label ? `'${label}'` : null;
+    if (!selector)
+        return named;
+    const withSelector = named ? `${named} (${selector})` : selector;
+    return withSelector.length <= room ? withSelector : named;
+}
+export function withClickedLabel(caption: string, label: string | null, selector?: string | null): string {
+    const target = clickTargetPhrase(label, selector, MAX_CAPTION_CHARS - caption.length - ', clicked '.length);
+    if (!target)
         return caption;
-    return `${caption}, clicked '${label}'`.slice(0, 220);
+    return `${caption}, clicked ${target}`.slice(0, MAX_CAPTION_CHARS);
 }
 export function assignClicks(deixis: readonly PlannedMoment[], clicks: readonly ClickCluster[]): Map<number, ClickCluster> {
     const pairs: Array<{
@@ -293,7 +302,7 @@ export function fuseMoments(input: FuseInput): FusedMoment[] {
             return {
                 tMs: cue.tMs,
                 source: 'fused',
-                caption: withClickedLabel(cue.caption, click.label),
+                caption: withClickedLabel(cue.caption, click.label, click.selector),
                 frameUrl: null,
                 cropUrl: null,
                 x: norm?.x ?? null,
@@ -419,14 +428,13 @@ export function fuseMoments(input: FuseInput): FusedMoment[] {
         const norm = normalizeAt(click.x, click.y, click.tMs);
         if (!norm)
             continue;
-        const target = click.label ? `'${click.label}'` : 'here';
+        const countText = click.count >= 2 ? ` ${click.count} times` : '';
+        const target = clickTargetPhrase(click.label, click.selector, MAX_CAPTION_CHARS - 'Clicks '.length - countText.length) ?? 'here';
         const saying = sayingSuffix(narrationAround(segments, click.tMs));
         moments.push({
             tMs: click.tMs,
             source: 'click',
-            caption: (click.count >= 2
-                ? `Clicks ${target} ${click.count} times${saying}`
-                : `Clicks ${target}${saying}`).slice(0, 220),
+            caption: `Clicks ${target}${countText}${saying}`.slice(0, MAX_CAPTION_CHARS),
             frameUrl: null,
             cropUrl: null,
             x: norm.x,
