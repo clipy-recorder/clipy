@@ -22,6 +22,7 @@ import { transcribeOpenAICompatible } from "./providers/openai.js";
 import type { TranscribeOptions, TranscribeResult, TranscriptGap, TranscriptionConfig } from "./types.js";
 
 export type {
+  AudioTrack,
   LocalModelId,
   TranscribeOptions,
   TranscribeProgress,
@@ -50,7 +51,7 @@ export async function transcribe(inputPath: string, config: TranscriptionConfig,
   try {
     const wavPath = join(dir, "audio.wav");
     try {
-      await extractAudio(inputPath, wavPath, signal);
+      await extractAudio(inputPath, wavPath, signal, options.audioTrack);
     } catch (err) {
       if (!(err instanceof NoAudioTrackError)) throw err;
       const totalMs = await durationMs(inputPath, signal);
