@@ -47,6 +47,43 @@ describe("parseSilencedetectOutput", () => {
     ]);
     expect(parseSilencedetectOutput(out)).toHaveLength(2);
   });
+
+  it("reads CRLF stderr, as ffmpeg writes it on Windows", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 1.5",
+      "[silencedetect @ 0x1] silence_end: 2.75 | silence_duration: 1.25",
+      "[silencedetect @ 0x1] silence_start: 6",
+      "[silencedetect @ 0x1] silence_end: 7.5 | silence_duration: 1.5",
+      "",
+    ].join("\r\n");
+    expect(parseSilencedetectOutput(out)).toEqual([
+      { startSec: 1.5, endSec: 2.75 },
+      { startSec: 6, endSec: 7.5 },
+    ]);
+  });
+
+  it("clamps a negative silence_start to 0", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: -0.02",
+      "[silencedetect @ 0x1] silence_end: 0.5 | silence_duration: 0.52",
+    ].join("\n");
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 0, endSec: 0.5 }]);
+  });
+
+  it("derives the start from the duration when an end line has no start", () => {
+    const out = "[silencedetect @ 0x1] silence_end: 4 | silence_duration: 1.5";
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 2.5, endSec: 4 }]);
+  });
+
+  it("drops a zero-length span", () => {
+    const out = [
+      "[silencedetect @ 0x1] silence_start: 3",
+      "[silencedetect @ 0x1] silence_end: 3 | silence_duration: 0",
+      "[silencedetect @ 0x1] silence_start: 5",
+      "[silencedetect @ 0x1] silence_end: 6 | silence_duration: 1",
+    ].join("\n");
+    expect(parseSilencedetectOutput(out)).toEqual([{ startSec: 5, endSec: 6 }]);
+  });
 });
 
 describe("planChunks", () => {
