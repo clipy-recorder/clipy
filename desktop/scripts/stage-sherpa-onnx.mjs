@@ -78,7 +78,7 @@ async function download(dest) {
   }
 }
 
-/** The build script's cache must hold the checked archive or nothing. */
+/** Keep Cargo from reusing extracted files that were not checked against the archive. */
 async function scrubBuildCache(targetDir) {
   const cache = path.join(targetDir, "sherpa-onnx-prebuilt");
   const cachedArchive = path.join(cache, ARCHIVE);
@@ -87,9 +87,10 @@ async function scrubBuildCache(targetDir) {
     console.warn(`[stage-sherpa-onnx] removing an unverified ${cachedArchive}`);
     rmSync(cachedArchive, { force: true });
   }
-  if (existsSync(extracted) && !existsSync(cachedArchive)) {
-    // Unpacked from an archive that is gone or was just removed: unknown origin.
-    console.warn(`[stage-sherpa-onnx] removing ${extracted}, unpacked from an unverified archive`);
+  if (existsSync(extracted)) {
+    // Even a matching cached archive does not prove these files came from it.
+    // Force sherpa-onnx-sys to unpack the archive that was just verified.
+    console.warn(`[stage-sherpa-onnx] removing unchecked extracted cache ${extracted}`);
     rmSync(extracted, { recursive: true, force: true });
   }
 }
