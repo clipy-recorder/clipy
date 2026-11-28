@@ -31,7 +31,7 @@ export type {
   TranscriptSegment,
 } from "./types.js";
 export { extractAudio, NoAudioTrackError } from "./audio.js";
-export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, type LocalModel, type ModelFile } from "./models.js";
+export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumError, DownloadTooLargeError, ModelWriteError, type LocalModel, type ModelFile } from "./models.js";
 export { ModelNotInstalledError } from "./local.js";
 export { ProviderError } from "./providers/http.js";
 
