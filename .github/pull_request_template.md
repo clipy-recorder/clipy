@@ -12,3 +12,6 @@
 - [ ] Tests or a note on why none are needed.
 - [ ] Nothing new leaves the machine, or the README's "Where your data goes" table says what does.
 - [ ] No telemetry, analytics or calls to a Clipy service.
+- [ ] If this touches `plugins/`, `npx @clipy/cli` pins still match
+      (`pnpm test:plugins`) and each changed plugin's `version` in
+      `plugin.json` is bumped if its behaviour or usage changed.
