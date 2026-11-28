@@ -44,6 +44,43 @@ export type StoredTranscription =
   | { kind: (typeof KEYED_TRANSCRIPTION_KINDS)[number]; apiKey: string; model?: string };
 
 /**
+ * Redaction classes the auto-redaction gate recognises.
+ * Custom patterns are compiled at load time; invalid ones are skipped with a
+ * ConfigError (the pattern itself is never included in the message).
+ */
+export const REDACTION_CLASSES = [
+  "apiKeys",
+  "jwt",
+  "privateKeys",
+  "connectionStrings",
+  "emails",
+  "ipAddresses",
+  "creditCards",
+  "ssns",
+  "phoneNumbers",
+  "highEntropy",
+] as const;
+export type RedactionClass = (typeof REDACTION_CLASSES)[number];
+
+/**
+ * Redaction settings as saved in the file.
+ *
+ * ```json
+ * { "redaction": { "enabled": true, "classes": ["apiKeys", "emails"] } }
+ * ```
+ */
+export interface StoredRedaction {
+  /** Master switch. Default false (off). */
+  enabled: boolean;
+  /** Which pattern classes to apply. Default: all. */
+  classes?: RedactionClass[];
+  /** Exact strings to never redact. */
+  allowlist?: string[];
+  /** Additional user-defined patterns. Each `pattern` is a regex source string. */
+  custom?: Array<{ pattern: string; label: string }>;
+}
+
+/**
  * The settings file (`config.json`, mode 0600). Every field is optional; a
  * missing file means all defaults. Example:
  *
@@ -59,6 +96,8 @@ export type StoredTranscription =
  *   null means rules only, and nothing leaves the machine.
  * - `transcription`: how recordings are transcribed. Defaults to the local
  *   "English, fast" model.
+ * - `redaction`: opt-in secret/PII scrubbing before transcript text reaches a
+ *   model provider.
  *
  * Unknown top-level keys are kept, so a newer version's settings survive a
  * save from an older one. Inside `model` and `transcription` unknown keys are
@@ -68,6 +107,7 @@ export interface StoredConfig {
   version?: 1;
   model?: StoredModel | null;
   transcription?: StoredTranscription;
+  redaction?: StoredRedaction;
 }
 
 const HTTP_URL_MESSAGE = "must be an http:// or https:// URL";
@@ -99,10 +139,27 @@ const storedTranscriptionSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.enum(KEYED_TRANSCRIPTION_KINDS), apiKey: nonEmpty, model: nonEmpty.optional() }),
 ]);
 
+const customPatternSchema = z.strictObject({
+  pattern: z.string().min(1, "must not be empty"),
+  label: z
+    .string()
+    .min(1, "must not be empty")
+    .max(40, "must be at most 40 characters")
+    .regex(/^[A-Z0-9_]+$/, "must contain only A-Z, 0-9 and underscores"),
+});
+
+const storedRedactionSchema = z.strictObject({
+  enabled: z.boolean(),
+  classes: z.array(z.enum(REDACTION_CLASSES)).optional(),
+  allowlist: z.array(z.string()).optional(),
+  custom: z.array(customPatternSchema).max(20).optional(),
+});
+
 export const storedConfigSchema = z.looseObject({
   version: z.literal(1).optional(),
   model: storedModelSchema.nullable().optional(),
   transcription: storedTranscriptionSchema.optional(),
+  redaction: storedRedactionSchema.optional(),
 });
 
 /**

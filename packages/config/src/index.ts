@@ -29,7 +29,12 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { PROVIDER_BASE_URLS, type ModelProvider } from "@clipy/moments";
+import {
+  PROVIDER_BASE_URLS,
+  REDACTION_CLASS_NAMES,
+  type ModelProvider,
+  type RedactionClassName,
+} from "@clipy/moments";
 import { ConfigError } from "./errors.js";
 import { configPath, envValue } from "./paths.js";
 import { presetProvider, TRANSCRIPTION_PRESETS } from "./presets.js";
@@ -38,12 +43,15 @@ import {
   KEYED_TRANSCRIPTION_KINDS,
   LOCAL_TRANSCRIPTION_MODELS,
   MODEL_PRESETS,
+  REDACTION_CLASSES,
   storedConfigSchema,
   TRANSCRIPTION_KINDS,
   type LocalTranscriptionModel,
   type ModelPreset,
+  type RedactionClass,
   type StoredConfig,
   type StoredModel,
+  type StoredRedaction,
   type StoredTranscription,
   type StoredTranscriptionKind,
 } from "./schema.js";
@@ -54,11 +62,14 @@ export { DEFAULT_MODELS, presetProvider, TRANSCRIPTION_PRESETS } from "./presets
 export {
   LOCAL_TRANSCRIPTION_MODELS,
   MODEL_PRESETS,
+  REDACTION_CLASSES,
   TRANSCRIPTION_KINDS,
   type LocalTranscriptionModel,
   type ModelPreset,
+  type RedactionClass,
   type StoredConfig,
   type StoredModel,
+  type StoredRedaction,
   type StoredTranscription,
   type StoredTranscriptionKind,
 } from "./schema.js";
@@ -77,9 +88,25 @@ export interface LocalConfig {
   model: ModelProvider | null;
   modelPreset: ModelPreset | null;
   transcription: TranscriptionConfig;
+  /** Opt-in secret/PII redaction before transcript text reaches a model provider. */
+  redaction: RedactionConfig;
   /** Always false in the local edition. */
   telemetry: false;
 }
+
+/** Resolved redaction settings. */
+export interface RedactionConfig {
+  enabled: boolean;
+  classes: RedactionClass[];
+  allowlist: string[];
+  custom: Array<{ pattern: string; label: string }>;
+}
+
+// Compile-time check that config's REDACTION_CLASSES and moments' REDACTION_CLASS_NAMES stay identical.
+const _checkConfigToMoments: readonly RedactionClassName[] = REDACTION_CLASSES;
+const _checkMomentsToConfig: readonly RedactionClass[] = REDACTION_CLASS_NAMES;
+void _checkConfigToMoments;
+void _checkMomentsToConfig;
 
 /** The default when nothing is configured: the local "English, fast" model, on every platform. */
 export const DEFAULT_TRANSCRIPTION: StoredTranscription = { kind: "local", model: "english-fast" };
@@ -246,17 +273,66 @@ function defaultTranscriptionModel(kind: StoredTranscriptionKind): string | unde
   return kind === "openai" || kind === "groq" ? TRANSCRIPTION_PRESETS[kind].model : undefined;
 }
 
+/** Resolve redaction settings from the file and CLIPY_REDACT env var. */
+function resolveRedaction(stored: StoredRedaction | undefined, env: NodeJS.ProcessEnv): RedactionConfig {
+  const envRedact = envValue(env, "CLIPY_REDACT");
+  const defaults: RedactionConfig = {
+    enabled: false,
+    classes: [...REDACTION_CLASSES],
+    allowlist: [],
+    custom: [],
+  };
+
+  if (!stored && !envRedact) return defaults;
+
+  // Start from stored or defaults
+  const config: RedactionConfig = {
+    enabled: stored?.enabled ?? false,
+    classes: stored?.classes ? [...stored.classes] : [...REDACTION_CLASSES],
+    allowlist: stored?.allowlist ? [...stored.allowlist] : [],
+    custom: stored?.custom ? stored.custom.map((c) => ({ pattern: c.pattern, label: c.label })) : [],
+  };
+
+  // CLIPY_REDACT env var overrides
+  if (envRedact) {
+    if (envRedact === "1" || envRedact.toLowerCase() === "true") {
+      config.enabled = true;
+    } else if (envRedact === "0" || envRedact.toLowerCase() === "false") {
+      config.enabled = false;
+    } else {
+      // Comma-separated class names: "apiKeys,emails"
+      config.enabled = true;
+      const classes: RedactionClass[] = [];
+      for (const name of envRedact.split(",").map((s) => s.trim())) {
+        if ((REDACTION_CLASSES as readonly string[]).includes(name)) {
+          classes.push(name as RedactionClass);
+        }
+        // Unknown class names are silently ignored (like unknown env values in other settings)
+      }
+      if (classes.length > 0) config.classes = classes;
+    }
+  }
+
+  return config;
+}
+
 /**
  * The user's settings: the file at `configPath(env)` with env vars on top. A
  * missing file gives the defaults (rules only, local "English, fast"
- * transcription). Throws a ConfigError, safe to print, when the file is
- * malformed or a provider is missing something it needs.
+ * transcription, redaction off). Throws a ConfigError, safe to print, when the
+ * file is malformed or a provider is missing something it needs.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): LocalConfig {
   const path = configPath(env);
   const stored = readStored(path);
   const { model, modelPreset } = resolveModel(stored.model, env, path);
-  return { model, modelPreset, transcription: resolveTranscription(stored.transcription, env, path), telemetry: false };
+  return {
+    model,
+    modelPreset,
+    transcription: resolveTranscription(stored.transcription, env, path),
+    redaction: resolveRedaction(stored.redaction, env),
+    telemetry: false,
+  };
 }
 
 /**

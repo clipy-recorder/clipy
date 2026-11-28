@@ -16,6 +16,7 @@ import {
   type LocalMomentInput,
   type LocalMomentPlan,
 } from "./generated/localMomentPlan.js";
+import { RedactionSession, type RedactionOptions } from "./redact/index.js";
 
 export {
   DEFAULT_OPENROUTER_MODEL,
@@ -33,6 +34,15 @@ export {
   type LocalMomentPlan,
   type LocalMomentSource,
 } from "./generated/localMomentPlan.js";
+export {
+  RedactionSession,
+  compileCustomPattern,
+  REDACTION_CLASS_NAMES,
+  type RedactionClassName,
+  type RedactionOptions,
+  type RedactionSummary,
+  type RedactResult,
+} from "./redact/index.js";
 
 export interface PlanOptions {
   /** null or omitted: rules only, nothing leaves the machine. */
@@ -44,6 +54,14 @@ export interface PlanOptions {
    * in `modelFallback`, so a provider outage never costs the gesture moments.
    */
   onModelFailure?: "throw" | "rules";
+  /**
+   * Opt-in secret/PII redaction. When set and a remote model provider is
+   * active, transcript text and click labels are scrubbed on a copy before
+   * the planner serialises them for the LLM. The original input is never
+   * mutated. Ignored when no provider is configured (rules-only mode never
+   * sends anything off-machine).
+   */
+  redaction?: RedactionOptions;
 }
 
 /** Which planner produced a plan, for the AREC to state. */
@@ -168,8 +186,23 @@ export async function planMoments(input: LocalMomentInput, options: PlanOptions 
     Array.isArray(raw.interactions) && raw.interactions.length > MAX_PLANNER_INTERACTIONS
       ? { ...input, interactions: boundInteractions(input.interactions) }
       : input;
-  const parsed = localMomentInput.parse(bounded);
+
+  // Apply redaction on a shallow copy when a remote provider is active and
+  // redaction is requested. The original `bounded` object is never mutated.
   const provider = options.provider ?? null;
+  let plannerInput: LocalMomentInput;
+  if (provider && options.redaction) {
+    const session = new RedactionSession(options.redaction);
+    plannerInput = {
+      ...bounded,
+      transcript: session.redactSegments(bounded.transcript),
+      clickElements: session.redactClickLabels(bounded.clickElements),
+    };
+  } else {
+    plannerInput = bounded;
+  }
+
+  const parsed = localMomentInput.parse(plannerInput);
   const signal = options.signal ?? new AbortController().signal;
   try {
     // Scoped to this call, so concurrent calls with different providers are safe.
