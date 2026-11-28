@@ -35,7 +35,32 @@ export { defaultModelDir, downloadModel, LOCAL_MODELS, modelStatus, ChecksumErro
 export { ModelNotInstalledError } from "./local.js";
 export { ProviderError } from "./providers/http.js";
 
-/** Transcribe a video or audio file. The audio is extracted to a temporary folder that is always removed. */
+/**
+ * Transcribe a video or audio file.
+ *
+ * The audio track is extracted to a temporary directory that is always removed
+ * when the function returns, even on error.
+ *
+ * @param inputPath - Absolute path to the video or audio file to transcribe.
+ * @param config    - Which engine to use and its credentials. Use
+ *   `{ kind: "local", model: "english-fast" }` for on-device transcription
+ *   with no data leaving the machine.
+ * @param options   - Optional abort signal, progress callback, and paths for
+ *   the local speech engine and model directory.
+ * @returns Timestamped transcript segments, the engine that produced them,
+ *   an optional language code, and any gaps where no transcript is available.
+ *
+ * @example
+ * ```ts
+ * const result = await transcribe("/path/to/recording.mp4", {
+ *   kind: "local",
+ *   model: "english-fast",
+ * });
+ * for (const seg of result.segments) {
+ *   console.log(`[${seg.startMs}ms] ${seg.text}`);
+ * }
+ * ```
+ */
 export async function transcribe(inputPath: string, config: TranscriptionConfig, options: TranscribeOptions = {}): Promise<TranscribeResult> {
   const { signal, onProgress } = options;
   throwIfAborted(signal);

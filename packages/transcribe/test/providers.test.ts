@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join } from "node:path";
@@ -8,6 +8,9 @@ import { transcribeAssemblyAI } from "../src/providers/assemblyai.js";
 import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
+
+/** True when ffmpeg is available on PATH. Tests that call execFileSync("ffmpeg") are skipped when it is not. */
+const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
@@ -109,7 +112,7 @@ describe("openai-compatible", () => {
     await expectSafeError(transcribeOpenAICompatible(await audioInput(1), { baseUrl: server.url, apiKey: KEY, model: "m" }), "openai-compatible", 401);
   });
 
-  it("works end to end through transcribe() from a media file", async () => {
+  it.skipIf(!hasFfmpeg)("works end to end through transcribe() from a media file", async () => {
     server = await fakeServer((_req, res) => json(res, { language: "en", segments: [{ start: 0, end: 1, text: "ok" }] }));
     const dir = tempDir();
     const media = join(dir, "tone.m4a");

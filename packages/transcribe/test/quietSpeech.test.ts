@@ -4,7 +4,7 @@
  * for having no speech is reported as a gap. Also: a file with no audio track
  * is a gap, not an error, and file names with a colon are read as files.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { extractAudio, ffmpegInput, readWavInfo, silenceThresholds } from "../src/audio.js";
@@ -14,6 +14,9 @@ import { audioInputFor, piecesWithoutSpeech, type AudioInput } from "../src/prov
 import { planChunks } from "../src/chunking.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
+
+/** True when ffmpeg is available on PATH. Tests that call ff() are skipped when it is not. */
+const hasFfmpeg = spawnSync("ffmpeg", ["-version"]).status === 0;
 
 function ff(args: string[]) {
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args]);
@@ -41,7 +44,7 @@ describe("silenceThresholds", () => {
 });
 
 describe("quiet speech", () => {
-  it("sends every piece holding quiet speech and reports the silent piece as a gap", async () => {
+  it.skipIf(!hasFfmpeg)("sends every piece holding quiet speech and reports the silent piece as a gap", async () => {
     const dir = tempDir();
     const wav = join(dir, "quiet.wav");
     // A tone peaking near -45 dBFS for 8 s, 10 s of silence, the tone again for 7 s.
@@ -68,7 +71,7 @@ describe("quiet speech", () => {
     expect(r.gaps[0].endMs).toBeLessThanOrEqual(18500);
   });
 
-  it("always sends a recording that is one piece, even a silent one", async () => {
+  it.skipIf(!hasFfmpeg)("always sends a recording that is one piece, even a silent one", async () => {
     const dir = tempDir();
     const wav = join(dir, "silent.wav");
     ff(["-f", "lavfi", "-i", "anullsrc=r=16000:cl=mono:d=3", "-c:a", "pcm_s16le", wav]);
@@ -80,7 +83,7 @@ describe("quiet speech", () => {
 });
 
 describe("a file with no audio track", () => {
-  it("is one gap over the file for every kind, not an error", async () => {
+  it.skipIf(!hasFfmpeg)("is one gap over the file for every kind, not an error", async () => {
     const dir = tempDir();
     const video = join(dir, "video-only.mp4");
     ff(["-f", "lavfi", "-i", "color=c=red:s=64x64:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", video]);
@@ -103,7 +106,7 @@ describe("a file with no audio track", () => {
 });
 
 describe("file names with a colon", () => {
-  it("are read as local files, not as an ffmpeg protocol", async () => {
+  it.skipIf(!hasFfmpeg)("are read as local files, not as an ffmpeg protocol", async () => {
     const dir = tempDir();
     const prev = process.cwd();
     process.chdir(dir);
@@ -133,7 +136,7 @@ describe("trimPieceToSpeech", () => {
 });
 
 describe("pieces of background noise", () => {
-  it("are not sent to engines that invent words in noise, in a recording at a normal level", async () => {
+  it.skipIf(!hasFfmpeg)("are not sent to engines that invent words in noise, in a recording at a normal level", async () => {
     const dir = tempDir();
     const wav = join(dir, "noise.wav");
     // A tone at a normal level for 8 s, 10 s of fan-like noise near -42 dB, the tone again for 7 s.

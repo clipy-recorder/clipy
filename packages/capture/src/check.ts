@@ -8,9 +8,15 @@ export const SCREEN_RECORDING_HINT =
   "(and Microphone for --microphone), then quit and reopen the terminal.";
 
 const INSTALL_FFMPEG: Record<Platform, string> = {
-  darwin: "Install ffmpeg: `brew install ffmpeg`.",
-  win32: "Install ffmpeg 6 or newer: `winget install Gyan.FFmpeg` (or download from ffmpeg.org) and make sure ffmpeg.exe is on PATH.",
-  linux: "Install ffmpeg: `sudo apt install ffmpeg` (Debian/Ubuntu) or `sudo dnf install ffmpeg` (Fedora).",
+  darwin:
+    "Install ffmpeg: `brew install ffmpeg`. See https://ffmpeg.org/download.html for other options.",
+  win32:
+    "Install ffmpeg 6 or newer: `winget install Gyan.FFmpeg` or download a shared build from " +
+    "https://www.gyan.dev/ffmpeg/builds/ and add its bin\\ folder to PATH. " +
+    "Set CLIPY_FFMPEG to the ffmpeg.exe path if you place it elsewhere.",
+  linux:
+    "Install ffmpeg: `sudo apt install ffmpeg` (Debian/Ubuntu), `sudo dnf install ffmpeg` (Fedora), " +
+    "or `sudo pacman -S ffmpeg` (Arch). See https://ffmpeg.org/download.html for more options.",
 };
 
 /** True when the session is Wayland, where x11grab sees only XWayland. */
@@ -40,7 +46,15 @@ export async function checkCapture(platform: Platform = currentPlatform(), opts:
   const hints: string[] = [];
   const ffmpeg = ffmpegPath(platform, env);
   if (!ffmpeg) {
-    return { ok: false, ffmpeg: null, problems: ["ffmpeg was not found on PATH"], hints: [INSTALL_FFMPEG[platform]] };
+    return {
+      ok: false,
+      ffmpeg: null,
+      problems: ["ffmpeg was not found on PATH"],
+      hints: [
+        INSTALL_FFMPEG[platform],
+        "You can also set the CLIPY_FFMPEG environment variable to the full path of an ffmpeg executable.",
+      ],
+    };
   }
   const devices = await run(ffmpeg, ["-hide_banner", "-devices"], env);
   if (devices.status === null) {
