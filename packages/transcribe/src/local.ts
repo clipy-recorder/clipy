@@ -253,7 +253,7 @@ export async function transcribeLocal(
       timed.map((x) => x.t),
     ),
     ...wholePieces,
-  ]);
+  ], input.info.durationSec);
   if (withSpeech.length > 0 && succeeded === 0) {
     throw new Error("Local transcription failed on every part of this recording.");
   }

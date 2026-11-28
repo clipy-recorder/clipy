@@ -61,7 +61,7 @@ export async function transcribeDeepgram(
   }
   input.onProgress?.(1);
   return {
-    segments: toTimeline(segments),
+    segments: toTimeline(segments, input.info.durationSec),
     language: channel?.detected_language,
     engine: `deepgram:${model}`,
     gaps: [],

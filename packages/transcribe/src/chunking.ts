@@ -174,8 +174,11 @@ export function mergePieces(pieces: PieceResult[]): TranscriptSegment[] {
   const kept: Array<{ start: number; end: number; text: string }> = [];
   for (const { plan, segments } of pieces) {
     for (const s of segments) {
-      const start = s.start + plan.extractStartSec;
-      const end = Math.max(s.end, s.start) + plan.extractStartSec;
+      const relativeStart = Math.max(0, Math.min(s.start, plan.extractDurSec));
+      const relativeEnd = Math.max(0, Math.min(s.end, plan.extractDurSec));
+      if (!Number.isFinite(relativeStart) || !Number.isFinite(relativeEnd) || relativeEnd <= relativeStart) continue;
+      const start = relativeStart + plan.extractStartSec;
+      const end = relativeEnd + plan.extractStartSec;
       const centre = (start + end) / 2;
       if (centre < plan.keepStartSec || centre >= plan.keepEndSec) continue;
       const text = s.text.trim();
@@ -258,9 +261,9 @@ export function tokensInCore(plan: ChunkPlan, tokens: string[], timestamps: numb
 }
 
 /** Segments that are already on the recording's timeline (seconds) as sorted, non-overlapping ms segments. */
-export function toTimeline(segments: RelativeSegment[]): TranscriptSegment[] {
+export function toTimeline(segments: RelativeSegment[], durationSec: number): TranscriptSegment[] {
   return mergePieces([
-    { plan: { index: 0, extractStartSec: 0, extractDurSec: Infinity, keepStartSec: -Infinity, keepEndSec: Infinity, hardCut: false }, segments },
+    { plan: { index: 0, extractStartSec: 0, extractDurSec: durationSec, keepStartSec: -Infinity, keepEndSec: Infinity, hardCut: false }, segments },
   ]);
 }
 
