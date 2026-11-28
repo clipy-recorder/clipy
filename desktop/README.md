@@ -19,9 +19,10 @@ installed side by side.
 ## Build it
 
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
-the Command Line Tools (macOS 12.3 or newer to run the app). On Windows,
-Visual Studio Build Tools with the C++ workload, and FFmpeg 7 shared
-libraries (see below).
+the Command Line Tools (macOS 12.3 or newer to run the app). On Windows, use
+Visual Studio Build Tools 2022 with the **Desktop development with C++**
+workload and a Windows 10 or 11 SDK. You also need LLVM 18 and FFmpeg 7 shared
+libraries; the reproducible setup is below.
 
 ```bash
 cd desktop
@@ -47,10 +48,32 @@ The recorder encodes through FFmpeg 7.
   prebuilt FFmpeg framework into `src-tauri/target/native-deps/`. Run it once
   yourself before the first `pnpm tauri:dev`. Without it, Homebrew's
   `ffmpeg@7` works for compiling (`src-tauri/.cargo/config.toml`).
-- Windows: download a shared FFmpeg 7 build, set `FFMPEG_DIR` to its folder
-  (the one with `bin`, `include` and `lib`), and the build copies its DLLs next
-  to the app. The recorder encodes H.264 with libx264 on Windows, so the build
-  needs FFmpeg with x264.
+- Windows: the Rust FFmpeg bindings also need libclang. The current dependency
+  stack is verified with LLVM 18.1.8; do not use winget's unversioned latest
+  LLVM (LLVM 23 produces invalid opaque FFmpeg structs with bindgen 0.70).
+  In PowerShell, install the pinned LLVM and FFmpeg shared builds and set
+  `FFMPEG_DIR` for this shell and future shells:
+
+  ```powershell
+  winget install --exact --id LLVM.LLVM --version 18.1.8
+  winget install --exact --id Gyan.FFmpeg.Shared --version 7.1.1
+
+  $avcodec = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" `
+    -Recurse -File -Filter avcodec.lib |
+    Where-Object FullName -Like '*Gyan.FFmpeg.Shared*' |
+    Select-Object -First 1
+  if (-not $avcodec) { throw 'The FFmpeg shared development files were not found' }
+
+  $env:FFMPEG_DIR = Split-Path -Parent (Split-Path -Parent $avcodec.FullName)
+  [Environment]::SetEnvironmentVariable('FFMPEG_DIR', $env:FFMPEG_DIR, 'User')
+  ```
+
+  `FFMPEG_DIR` must be the folder containing `bin`, `include` and `lib`, not
+  the `bin` folder itself. The pinned Gyan build includes libx264 for H.264
+  recording. The build wrapper adds its `bin` folder to the dev app's `PATH`
+  and copies the DLLs beside the installed app. If bindgen still reports that
+  it cannot find `libclang.dll`, open a new terminal or set
+  `LIBCLANG_PATH=C:\Program Files\LLVM\bin`.
 
 ### macOS permissions
 
@@ -59,13 +82,39 @@ Accessibility permissions to the signature, so after each rebuild you may
 need to switch Clipy Local off and on again in System Settings, Privacy &
 Security.
 
+### Windows installation and permissions
+
+`pnpm tauri:build` writes an NSIS installer under
+`src-tauri/target/release/bundle/nsis/`. The self-built installer is unsigned,
+so SmartScreen may show **Windows protected your PC**. For an artifact you
+built from this checkout, choose **More info**, verify the app and publisher
+details, then choose **Run anyway**. Do not bypass this warning for an
+installer you did not build or otherwise trust.
+
+Allow desktop apps to use the microphone under **Settings > Privacy &
+security > Microphone**. Enable camera access there as well if you want to
+record a webcam.
+
+### Smoke-test the app
+
+Install and launch the result, choose a display and microphone, and record at
+least 30 seconds while speaking. Stop the take and wait for local processing
+to finish. Open the take from Clipy Local's home screen; **Show in Explorer**
+reveals its `recording.arec`. Open that AREC in Clipy Local and confirm the
+video plays and the spoken audio is present.
+
 ## Test it
 
 ```bash
 pnpm exec tsc --noEmit
-bash scripts/test-rust.sh --locked --lib   # finds the FFmpeg framework for you
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
+bash scripts/test-rust.sh --locked --lib   # macOS: finds the FFmpeg framework for you
 ```
+
+The Bash Rust helper is macOS-only. The Windows Rust-test environment and
+platform test matrix are tracked separately; `pnpm tauri:dev` and
+`pnpm tauri:build` in the build steps compile the Windows Rust application for
+this guide.
 
 `src-tauri/crates/clipy-local-moments` (moment selection),
 `src-tauri/crates/clipy-local-stt` (transcription) and

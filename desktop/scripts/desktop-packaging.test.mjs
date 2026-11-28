@@ -168,6 +168,8 @@ test("the local edition bundles the sherpa-onnx DLLs on Windows only", () => {
   const wrapper = readFileSync(path.join(desktopDir, "scripts/tauri-local.mjs"), "utf8");
   assert.match(wrapper, /const CARGO_ARGS = \[\];/);
   assert.match(wrapper, /tauri\.local\.windows\.conf\.json/);
+  assert.match(wrapper, /path\.join\(ffmpegDir, "bin"\)/);
+  assert.match(wrapper, /\.join\(path\.delimiter\)/);
 });
 
 const SHERPA_ARCHIVE = "sherpa-onnx-v2.0.2-win-x64-shared-MT-Release-lib.tar.bz2";

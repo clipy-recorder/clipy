@@ -88,9 +88,10 @@ next sync keeps it.
 ## Desktop app
 
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
-the Command Line Tools. On Windows, Visual Studio Build Tools with the C++
-workload and a shared FFmpeg 7 build with `FFMPEG_DIR` pointing at it. Full
-build notes are in [desktop/README.md](desktop/README.md).
+the Command Line Tools. On Windows, use Visual Studio Build Tools 2022 with the
+Desktop development with C++ workload, LLVM 18.1.8 and the pinned shared
+FFmpeg 7 build with `FFMPEG_DIR` pointing at it. The exact PowerShell setup and
+troubleshooting notes are in [desktop/README.md](desktop/README.md).
 
 ```bash
 cd desktop
@@ -98,9 +99,10 @@ pnpm install --frozen-lockfile
 pnpm tauri:icon
 pnpm setup:native-deps            # macOS: downloads the FFmpeg framework
 pnpm exec tsc --noEmit
-bash scripts/test-rust.sh --locked --lib
+bash scripts/test-rust.sh --locked --lib  # macOS
 node --test scripts/desktop-packaging.test.mjs scripts/speech-permissions.test.mjs
 pnpm tauri:dev                    # run the desktop app
+pnpm tauri:build                  # build the app bundle or installer
 ```
 
 The crates in `desktop/src-tauri/crates/` have their own `cargo test`.

@@ -18,6 +18,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { argv, env, exit, platform } from "node:process";
 
 import { stageSherpaOnnx } from "./stage-sherpa-onnx.mjs";
@@ -42,6 +43,20 @@ if (platform === "win32") {
     console.error(`[tauri-local] ${error.message}`);
     exit(1);
   }
+
+  // Tauri copies bundle resources beside the installed executable, but
+  // `tauri dev` runs target/debug/clipy-desktop.exe directly. Make the FFmpeg
+  // DLLs discoverable there without requiring contributors to mutate PATH by
+  // hand. This also guarantees that bindgen, the linker and the dev app use
+  // the same shared build named by FFMPEG_DIR.
+  const ffmpegDir = childEnv.FFMPEG_DIR;
+  if (ffmpegDir) {
+    const pathKey = Object.keys(childEnv).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    childEnv[pathKey] = [path.join(ffmpegDir, "bin"), childEnv[pathKey]]
+      .filter(Boolean)
+      .join(path.delimiter);
+  }
+
   configs.push("--config", "src-tauri/tauri.local.windows.conf.json");
 }
 
