@@ -330,6 +330,25 @@ describe("gemini", () => {
     ]);
   });
 
+  it("rejects timestamps with empty components", async () => {
+    for (const timestamp of ["", "1:", ":30", "1::5", " : "]) {
+      server = await fakeServer((_req, res) =>
+        json(res, reply({ segments: [{ start: timestamp, end: 2, text: "invalid" }] })),
+      );
+
+      const err = await transcribeGemini(
+        await audioInput(3),
+        { apiKey: KEY, baseUrl: server.url },
+      ).catch((e: Error) => e);
+
+      expect(err).toBeInstanceOf(ProviderError);
+      expect((err as Error).message).toMatch(/gemini.*did not match/);
+
+      await server.close();
+      server = null;
+    }
+  });
+
   it("rejects an answer that is not the transcript format", async () => {
     server = await fakeServer((_req, res) => json(res, reply({ words: [SECRET_TEXT] })));
     const err = await transcribeGemini(await audioInput(1), { apiKey: KEY, baseUrl: server.url }).catch((e: Error) => e);
