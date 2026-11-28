@@ -85,8 +85,9 @@ interface EdgeEvent {
 /**
  * Button, key and annotation events thinned to `budget` without changing
  * what the gesture rules see: every Control and annotation event, and every
- * non-modifier key press during a Control hold (it makes a chord), are kept;
- * other key presses and clicks are dropped only as whole down/up pairs.
+ * non-modifier key press during a Control hold (it makes a chord) along with
+ * its release, are kept; other key presses and clicks are dropped only as
+ * whole down/up pairs.
  */
 function thinEdges<T>(events: readonly T[], edges: number[], budget: number): number[] {
   if (edges.length <= budget) return edges;
@@ -97,6 +98,7 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
   const units: number[][] = [];
   const openKeys = new Map<unknown, number[]>();
   const openButtons = new Map<unknown, number[]>();
+  const keptChordKeys = new Map<unknown, number>();
   let held = 0;
   for (const i of ordered) {
     const e = at(i);
@@ -107,6 +109,12 @@ function thinEdges<T>(events: readonly T[], edges: number[], budget: number): nu
       kept.push(i);
       held = e.kind === "key_down" ? held + 1 : 0;
     } else if (e.kind === "key_down" && held > 0 && typeof code === "number" && !isModifierKeycode(code)) {
+      kept.push(i);
+      keptChordKeys.set(code, (keptChordKeys.get(code) ?? 0) + 1);
+    } else if (e.kind === "key_up" && (keptChordKeys.get(code) ?? 0) > 0) {
+      const openChord = keptChordKeys.get(code)!;
+      if (openChord <= 1) keptChordKeys.delete(code);
+      else keptChordKeys.set(code, openChord - 1);
       kept.push(i);
     } else if (e.kind === "key_down" || e.kind === "down") {
       const open = e.kind === "key_down" ? openKeys : openButtons;

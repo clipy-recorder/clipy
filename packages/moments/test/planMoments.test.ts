@@ -368,4 +368,31 @@ describe("long typing sessions", () => {
     }
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
+
+  it("keeps the release of a key pressed during a Control hold", () => {
+    const events = [
+      { kind: "down", time_ms: 0, button: 1, x: 1, y: 1 },
+      { kind: "up", time_ms: 1, button: 1, x: 1, y: 1 },
+      { kind: "key_down", time_ms: 2, key_code: 59 },
+      { kind: "key_down", time_ms: 3, key_code: 40 },
+      { kind: "key_up", time_ms: 4, key_code: 40 },
+      { kind: "key_up", time_ms: 5, key_code: 59 },
+    ];
+    const bounded = boundInteractions(events, 5);
+    expect(bounded.some((e) => e.kind === "key_down" && e.key_code === 40)).toBe(true);
+    expect(bounded.some((e) => e.kind === "key_up" && e.key_code === 40)).toBe(true);
+
+    // Release arriving after Control is released is still paired with the chord press.
+    const lateRelease = [
+      { kind: "down", time_ms: 0, button: 1, x: 1, y: 1 },
+      { kind: "up", time_ms: 1, button: 1, x: 1, y: 1 },
+      { kind: "key_down", time_ms: 2, key_code: 59 },
+      { kind: "key_down", time_ms: 3, key_code: 40 },
+      { kind: "key_up", time_ms: 4, key_code: 59 },
+      { kind: "key_up", time_ms: 5, key_code: 40 },
+    ];
+    const boundedLate = boundInteractions(lateRelease, 5);
+    expect(boundedLate.some((e) => e.kind === "key_down" && e.key_code === 40)).toBe(true);
+    expect(boundedLate.some((e) => e.kind === "key_up" && e.key_code === 40)).toBe(true);
+  });
 });
