@@ -10,7 +10,7 @@ import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
-import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
+import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer, type Handler } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
 const SECRET_TEXT = "the-secret-transcript-words";
@@ -183,6 +183,49 @@ describe("deepgram", () => {
 });
 
 describe("assemblyai", () => {
+  async function queuedJob(onPoll: Handler) {
+    server = await fakeServer((req, res) => {
+      if (req.url === "/v2/upload") return json(res, { upload_url: "u" });
+      if (req.method === "POST") return json(res, { id: "t1", status: "queued" });
+      return onPoll(req, res);
+    });
+    return { apiKey: KEY, baseUrl: server.url };
+  }
+
+  it("expires between polls without sending another status request", async () => {
+    let polls = 0;
+    const config = await queuedJob((_req, res) => {
+      polls++;
+      json(res, { id: "t1", status: "completed" });
+    });
+    await expect(transcribeAssemblyAI(await audioInput(1), config, { pollIntervalMs: 200, timeoutMs: 30 }))
+      .rejects.toThrow("timed out waiting for the transcript");
+    expect(polls).toBe(0);
+  });
+
+  it.each(["deadline", "caller"] as const)("interrupts a partial status response on %s cancellation", async (cause) => {
+    const controller = new AbortController();
+    let responseClosed: Promise<boolean> | undefined;
+    const config = await queuedJob((_req, res) => {
+      res.write('{"id":"t1",');
+      if (cause === "caller") controller.abort();
+      // Bound the test even if the client ignores its deadline.
+      const finish = setTimeout(() => res.end('"status":"completed"}'), 1000);
+      responseClosed = new Promise((resolve) => res.once("close", () => {
+        clearTimeout(finish);
+        resolve(res.writableEnded);
+      }));
+    });
+    const input = await audioInput(1);
+    const result = transcribeAssemblyAI({ ...input, signal: controller.signal }, config, {
+      pollIntervalMs: 1,
+      timeoutMs: cause === "deadline" ? 200 : 5000,
+    });
+    if (cause === "caller") await expect(result).rejects.toMatchObject({ name: "AbortError" });
+    else await expect(result).rejects.toMatchObject({ name: "ProviderError", message: expect.stringContaining("timed out waiting for the transcript") });
+    expect(await responseClosed).toBe(false);
+  });
+
   it("uploads, starts a job, polls, and groups words (ms) into segments", async () => {
     let polls = 0;
     server = await fakeServer((req, res) => {
