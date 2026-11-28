@@ -308,3 +308,44 @@ describe("a malformed file", () => {
     expect(readFileSync(file, "utf8")).toBe("{ broken");
   });
 });
+
+describe("UTF-8 BOM config files", () => {
+  it("loads a config file with a leading UTF-8 BOM", () => {
+    writeConfig('\uFEFF{"transcription":{"kind":"none"}}');
+
+    expect(loadConfig(env).transcription).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("updates a BOM-prefixed config and preserves existing settings", () => {
+    writeConfig(
+      '\uFEFF{"transcription":{"kind":"none"},"futureSetting":{"a":1}}',
+    );
+
+    saveConfig(
+      { transcription: { kind: "local", model: "multilingual" } },
+      env,
+    );
+
+    expect(JSON.parse(readFileSync(file, "utf8"))).toEqual({
+      version: 1,
+      transcription: {
+        kind: "local",
+        model: "multilingual",
+      },
+      futureSetting: { a: 1 },
+    });
+  });
+
+  it("reports the correct position for malformed JSON after a BOM", () => {
+    writeConfig('\uFEFF{"version": 1,}');
+
+    const error = errorOf(() => loadConfig(env));
+
+    expect(error.message).toContain(file);
+    expect(error.message).toContain(
+      "not valid JSON at line 1, column 15",
+    );
+  });
+});
