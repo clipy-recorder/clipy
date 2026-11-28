@@ -93,6 +93,10 @@ recordings, is free to start with a 7-day free trial, no card.
 
 - Let your AI agents watch videos: [clipy.online/ai-watch-videos](https://clipy.online/ai-watch-videos)
 - The AREC format: [arecformat.org](https://arecformat.org)
-- Something not working? Run `clipy doctor`.
+- Something not working? Run `clipy doctor`, or `clipy doctor --local` for a
+  video file. Without the CLI installed, use `npx -y @clipy/cli@0.21.0` in place
+  of `clipy`. The full `clipy doctor` also checks account and recording
+  features: without a Clipy account it shows `FAIL auth` and suggests
+  `clipy login`. `/watch` does not need that unless you use `--sync`.
 
 License: Apache-2.0.

@@ -145,7 +145,28 @@ Read `code` and `remediation` from the JSON and act on them:
 | `speech_engine_required` | Ask the user, then run `clipy speech install` and import again. |
 | `youtube_sign_in_required`, or `unknown` with an `error` that says "Sign in to confirm you're not a bot" | YouTube is refusing requests from this network, which happens on cloud servers, CI runners and some VPNs. Running it again will not help, and `--transcript` does not get around it for a YouTube URL. Tell the user, and suggest running `/watch` on their own computer, or a `--local` import if they have the video file. With CLI 0.22.0 or later, offer one more option and ask before using it: re-run with `CLIPY_YTDLP_COOKIES_FROM_BROWSER=chrome` in front of the command (or `firefox`, `safari`, `edge`, `brave`), which lets yt-dlp use the user's own YouTube sign-in from that browser, read on this machine and never sent to Clipy. |
 | `unknown`, and `error` says "Private video" or "Video unavailable" | Ask for a public link to the video. |
-| anything else | Run `clipy doctor` (or `clipy doctor --local` for a video file) and tell the user what it reports. |
+| anything else | Tell the user the `error` first. Then run `clipy doctor` (or `clipy doctor --local` for a video file) and read it as described below. |
+
+### Reading `clipy doctor`
+
+`clipy doctor` checks the whole CLI, including features `/watch` does not use,
+so it can end in failed checks that have nothing to do with this video.
+
+- `FAIL auth` (`no API key configured`): expected without a Clipy account.
+  Imports without `--sync` need no account. Do not suggest `clipy login` and do
+  not present this as the cause.
+- `FAIL api` (`clipy.online unreachable`): an import without `--sync` does not
+  need clipy.online, so this does not explain its failure. It can be a sign
+  that the network is restricted; the import's own `error` says which request
+  failed.
+- Bridge, Playwright, Chrome and screen checks are for recording. Ignore them.
+- Report a `yt-dlp` or `ffmpeg` line (YouTube), or a `local ...` line (video
+  file), when it is not `PASS` and relates to the `error`.
+
+If no relevant line explains the failure, say that, and give the user the
+import's `error`. A `PASS` on `yt-dlp` only means it is installed, not that it
+can reach YouTube. If the `error` mentions a proxy or a failed connection, say
+the network blocked the request and suggest a network that can reach the site.
 
 Never retry the same failing command in a loop. Explain what happened in one
 or two sentences and what the user can do next.
