@@ -5,6 +5,12 @@ import { useLocale, useTranslations } from "use-intl";
 import { ClipyWordmark } from "../components/ClipyWordmark";
 import { groupTranscriptLines } from "../lib/transcriptLines";
 import {
+  MOMENT_BACK_GRACE_MS,
+  clampSeekMs,
+  findAdjacentMomentMs,
+  resolveViewerShortcut,
+} from "../lib/viewerShortcuts";
+import {
   readLocalRecording,
   revealLocalRecordingFile,
   updateOpenLocalArec,
@@ -42,11 +48,18 @@ export default function Viewer() {
   const [position, setPosition] = useState(0);
   const [copied, setCopied] = useState(false);
   const [autoOpen, setAutoOpen] = useState<"on" | "turningOff" | "off" | "dismissed">("on");
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const shortcutsWrapRef = useRef<HTMLDivElement | null>(null);
+  const shortcutsButtonRef = useRef<HTMLButtonElement | null>(null);
   // Apple's on-device recognizer hands back one segment per word, so the raw
   // list reads as a column of single words. Fold them into lines for display;
   // the AREC on disk keeps every word.
   const lines = useMemo(() => groupTranscriptLines(recording?.segments ?? []), [recording?.segments]);
+  const momentTimestamps = useMemo(
+    () => (recording?.frames ?? []).map((frame) => frame.timestampMs),
+    [recording?.frames],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -72,8 +85,76 @@ export default function Viewer() {
     const video = videoRef.current;
     if (!video) return;
     video.currentTime = ms / 1000;
+    setPosition(ms);
     void video.play().catch(() => {});
   };
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const command = resolveViewerShortcut(e, { helpOpen: shortcutsOpen });
+      if (!command) return;
+
+      if (command.type === "closeHelp") {
+        e.preventDefault();
+        setShortcutsOpen(false);
+        shortcutsButtonRef.current?.focus();
+        return;
+      }
+
+      if (command.type === "toggleHelp") {
+        e.preventDefault();
+        setShortcutsOpen((open) => !open);
+        return;
+      }
+
+      const video = videoRef.current;
+      if (!video) return;
+
+      if (command.type === "togglePlay") {
+        e.preventDefault();
+        if (video.paused || video.ended) {
+          void video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+        return;
+      }
+
+      if (command.type === "seekRelative") {
+        e.preventDefault();
+        const durationMs =
+          Number.isFinite(video.duration) && video.duration > 0 ? video.duration * 1000 : recording.durationMs;
+        const nextMs = clampSeekMs(video.currentTime * 1000 + command.deltaMs, durationMs);
+        video.currentTime = nextMs / 1000;
+        setPosition(nextMs);
+        return;
+      }
+
+      if (command.type === "seekMoment") {
+        e.preventDefault();
+        const graceMs = video.paused ? 0 : MOMENT_BACK_GRACE_MS;
+        const nextMs = findAdjacentMomentMs(momentTimestamps, video.currentTime * 1000, command.direction, graceMs);
+        if (nextMs === null) return;
+        video.currentTime = nextMs / 1000;
+        setPosition(nextMs);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [recording, momentTimestamps, shortcutsOpen]);
+
+  useEffect(() => {
+    if (!shortcutsOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (shortcutsWrapRef.current && e.target instanceof Node && !shortcutsWrapRef.current.contains(e.target)) {
+        setShortcutsOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [shortcutsOpen]);
 
   const copyPath = async () => {
     if (!recording) return;
@@ -108,6 +189,13 @@ export default function Viewer() {
   }
 
   const activeLine = lines.findIndex((line) => position >= line.startMs && position < line.endMs);
+  const shortcutRows = [
+    { label: t("shortcuts.playPause"), keys: [t("shortcuts.keys.space")] },
+    { label: t("shortcuts.skip5s"), keys: ["←", "→"] },
+    { label: t("shortcuts.moments"), keys: ["[", "]"] },
+    { label: t("shortcuts.seekFocused"), keys: [t("shortcuts.keys.enter")] },
+    { label: t("shortcuts.toggleHelp"), keys: ["?"] },
+  ];
 
   return (
     <main className="flex h-screen flex-col overflow-hidden bg-surface text-ink-text">
@@ -136,6 +224,48 @@ export default function Viewer() {
         >
           {t("showInFinder")}
         </button>
+        <div ref={shortcutsWrapRef} className="relative">
+          <button
+            ref={shortcutsButtonRef}
+            type="button"
+            onClick={() => setShortcutsOpen((open) => !open)}
+            aria-label={t("shortcuts.buttonLabel")}
+            aria-expanded={shortcutsOpen}
+            aria-haspopup="dialog"
+            title={t("shortcuts.buttonLabel")}
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-row text-[14px] font-bold hover:bg-row-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f5fd0]"
+          >
+            ?
+          </button>
+          {shortcutsOpen && (
+            <div
+              role="dialog"
+              aria-label={t("shortcuts.title")}
+              className="absolute right-0 top-full z-30 mt-2 w-72 rounded-xl border border-subtle bg-surface p-3.5 shadow-pop animate-pop-in"
+            >
+              <p className="pb-2 text-[12px] font-bold uppercase tracking-wide text-ink-secondary">
+                {t("shortcuts.title")}
+              </p>
+              <ul className="space-y-2 text-[13px]">
+                {shortcutRows.map((row) => (
+                  <li key={row.label} className="flex items-center justify-between gap-3">
+                    <span className="text-ink-text">{row.label}</span>
+                    <span className="flex shrink-0 items-center gap-1">
+                      {row.keys.map((keycap) => (
+                        <kbd
+                          key={keycap}
+                          className="rounded-sm border border-subtle bg-row px-1.5 py-0.5 font-sans text-[11px] font-semibold text-ink-text"
+                        >
+                          {keycap}
+                        </kbd>
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </header>
 
       {openedAutomatically && autoOpen !== "dismissed" && (
@@ -187,8 +317,9 @@ export default function Viewer() {
                   <button
                     key={`${frame.timestampMs}-${frame.path}`}
                     type="button"
+                    data-viewer-seek="true"
                     onClick={() => seek(frame.timestampMs)}
-                    className="flex w-full gap-3 rounded-xl p-1.5 text-left transition-colors hover:bg-row"
+                    className="flex w-full gap-3 rounded-xl p-1.5 text-left transition-colors hover:bg-row focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f5fd0]"
                   >
                     <img src={convertFileSrc(frame.path)} alt="" className="h-14 w-24 shrink-0 rounded-lg bg-row object-cover" />
                     <span className="min-w-0">
@@ -211,8 +342,9 @@ export default function Viewer() {
                   <button
                     key={`${line.startMs}-${index}`}
                     type="button"
+                    data-viewer-seek="true"
                     onClick={() => seek(line.startMs)}
-                    className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors ${
+                    className={`flex w-full gap-3 rounded-lg px-2 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2f5fd0] ${
                       index === activeLine ? "bg-[#e9effc]" : "hover:bg-row"
                     }`}
                   >
