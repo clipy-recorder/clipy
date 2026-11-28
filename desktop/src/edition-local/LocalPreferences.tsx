@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLanguageChoice, type Locale } from "../lib/i18n";
+import { formatBytes } from "../vendor/i18n/format";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { Icon, InlineSelect, Notice, SectionTitle, SettingRow } from "../components/recorder/ui";
@@ -98,10 +100,6 @@ function keyUpdate(draft: string, replacing: boolean): KeyUpdate {
   const value = draft.trim();
   if (value) return { action: "set", value };
   return replacing ? { action: "clear" } : { action: "keep" };
-}
-
-function formatMegabytes(bytes: number): string {
-  return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
 }
 
 const FIELD =
@@ -286,10 +284,12 @@ function ModelDownload({
   status,
   progress,
   onDownload,
+  locale,
 }: {
   status: LocalModelStatusDto | undefined;
   progress: LocalModelProgressDto | null;
   onDownload: () => void;
+  locale: Locale;
 }) {
   if (!status) return null;
   if (status.installed) {
@@ -311,7 +311,7 @@ function ModelDownload({
           <div className="h-full rounded-full bg-flash-500 transition-[width]" style={{ width: `${Math.round(ratio * 100)}%` }} />
         </div>
         <p className="text-[12px] text-ink-secondary">
-          {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatMegabytes(received)} of ${formatMegabytes(total)}`}
+          {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatBytes(locale, received)} of ${formatBytes(locale, total)}`}
         </p>
       </div>
     );
@@ -319,7 +319,7 @@ function ModelDownload({
   return (
     <div className="flex items-center gap-2">
       <span className="min-w-0 flex-1 text-[13px] text-ink-secondary">
-        {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatMegabytes(status.sizeBytes)}).`}
+        {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatBytes(locale, status.sizeBytes)}).`}
       </span>
       <button type="button" className={SAVE_BUTTON} onClick={onDownload}>
         Download
@@ -329,6 +329,7 @@ function ModelDownload({
 }
 
 function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDto; onSaved: (next: LocalSettingsDto) => void }) {
+  const { locale } = useLanguageChoice();
   const stored = settings.transcription;
   const [choice, setChoice] = useState<TranscriptionChoice>(choiceOf(stored));
   const [model, setModel] = useState(stored.model ?? "");
@@ -440,6 +441,7 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
             status={models.find((m) => m.id === localModel)}
             progress={progress?.model === localModel ? progress : null}
             onDownload={() => download(localModel)}
+            locale={locale}
           />
         )}
         {keyed && (
