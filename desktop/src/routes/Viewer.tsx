@@ -98,15 +98,23 @@ export default function Viewer() {
     return (
       <main className="flex h-screen items-center justify-center bg-surface px-8 text-center text-ink-text">
         <div>
-          <p className="text-[18px] font-semibold">{t("notOnMac")}</p>
+          <p className="text-[18px] font-semibold">{t("recordingNotFound")}</p>
           <p className="mt-2 text-[14px] text-ink-secondary">{error}</p>
         </div>
       </main>
     );
   }
   if (!recording) {
-    return <main className="h-screen bg-surface" />;
-  }
+  return (
+    <main className="flex h-screen items-center justify-center bg-surface text-ink-text">
+      <div
+        role="status"
+        aria-label={t("preparing")}
+        className="h-8 w-8 animate-spin rounded-full border-2 border-subtle border-t-[#2f5fd0]"
+      />
+    </main>
+  );
+}
 
   const activeLine = lines.findIndex((line) => position >= line.startMs && position < line.endMs);
 
@@ -119,7 +127,7 @@ export default function Viewer() {
           <p className="text-[12px] text-ink-secondary">
             {clock(recording.durationMs)}
             {recording.clickCount > 0 ? ` · ${t("clicks", { count: recording.clickCount })}` : ""}
-            {` · ${t("onThisMac")}`}
+            {` · ${isWindows ? t("onThisPc") : t("onThisMac")}`}
           </p>
         </div>
         {recording.stage !== "ready" && (
@@ -135,7 +143,7 @@ export default function Viewer() {
           onClick={() => void revealLocalRecordingFile(recording.arecPath).catch(() => {})}
           className="rounded-full bg-row px-4 py-2 text-[13px] font-semibold hover:bg-row-hover"
         >
-          {t("showInFinder")}
+          {isWindows ? t("showInExplorer") : t("showInFinder")}
         </button>
       </header>
 
