@@ -322,3 +322,4 @@ describe("transcribeLocal with a broken model", () => {
     await expect(transcribeLocal(await audioInput(2), "english-fast", root)).rejects.toThrow(/Local transcription failed/);
   });
 });
+
