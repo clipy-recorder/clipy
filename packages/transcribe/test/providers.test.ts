@@ -9,7 +9,7 @@ import { transcribeDeepgram } from "../src/providers/deepgram.js";
 import { transcribeElevenLabs } from "../src/providers/elevenlabs.js";
 import { transcribeGemini } from "../src/providers/gemini.js";
 import { ProviderError, requestJson } from "../src/providers/http.js";
-import { transcribeOpenAICompatible } from "../src/providers/openai.js";
+import { isTextOnlyModel, transcribeOpenAICompatible } from "../src/providers/openai.js";
 import { audioInput, fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 const KEY = "fake-test-key-SECRETKEY-123";
@@ -118,6 +118,89 @@ describe("openai-compatible", () => {
     const r = await transcribe(media, { kind: "openai-compatible", baseUrl: server.url, apiKey: KEY, model: "whisper-large-v3-turbo" }, { onProgress: (p) => stages.add(p.stage) });
     expect(r).toEqual({ segments: [{ startMs: 0, endMs: 1000, text: "ok" }], engine: "openai-compatible:whisper-large-v3-turbo", language: "en", gaps: [] });
     expect([...stages]).toEqual(["extract", "transcribe"]);
+  });
+
+  describe("GPT-4o transcribe models (json only, no timestamps)", () => {
+    it.each([
+      ["gpt-4o-transcribe", true],
+      ["gpt-4o-mini-transcribe", true],
+      ["gpt-4o-mini-transcribe-2025-12-15", true],
+      ["gpt-4o-transcribe-diarize", true],
+      ["GPT-4o-Transcribe", true],
+      ["openai/gpt-4o-mini-transcribe", true],
+      ["whisper-1", false],
+      ["whisper-large-v3-turbo", false],
+      ["gpt-4o", false],
+      ["gpt-4o-transcriber", false],
+      ["my-gpt-4o-transcribe", false],
+    ])("treats %s as text only: %s", (model, textOnly) => {
+      expect(isTextOnlyModel(model)).toBe(textOnly);
+    });
+
+    it.each([
+      ["gpt-4o-transcribe", "json", []],
+      ["gpt-4o-mini-transcribe", "json", []],
+      ["whisper-1", "verbose_json", ["segment"]],
+    ])("sends %s response_format=%s and granularities %j", async (model, format, granularities) => {
+      server = await fakeServer((_req, res) => json(res, { text: "hi", segments: [{ start: 0, end: 1, text: "hi" }] }));
+      await transcribeOpenAICompatible(await audioInput(2), { baseUrl: server.url, apiKey: KEY, model });
+      const form = await formData(server.requests[0]);
+      expect(form.get("model")).toBe(model);
+      expect(form.get("response_format")).toBe(format);
+      expect(form.getAll("timestamp_granularities[]")).toEqual(granularities);
+    });
+
+    it("turns the text into one segment trimmed to the speech in the piece", async () => {
+      server = await fakeServer((_req, res) => json(res, { text: " hello there ", usage: { type: "duration", seconds: 3 } }));
+      // 3 s with silence for the first 0.8 s and the last 0.5 s.
+      const input = await audioInput(3, [
+        { startSec: 0, endSec: 0.8 },
+        { startSec: 2.5, endSec: 3 },
+      ]);
+      const r = await transcribeOpenAICompatible(input, { baseUrl: server.url, apiKey: KEY, model: "gpt-4o-transcribe" });
+      expect(r.segments).toEqual([{ startMs: 800, endMs: 2500, text: "hello there" }]);
+      expect(r.engine).toBe("openai-compatible:gpt-4o-transcribe");
+      expect(r.language).toBeUndefined();
+    });
+
+    it("trims each piece with its own silences when the audio is split", async () => {
+      const seen: number[] = [];
+      server = await fakeServer(async (req, res) => {
+        const file = (await formData(req)).get("file") as File;
+        seen.push(wavSeconds(Buffer.from(await file.arrayBuffer())));
+        json(res, { text: `piece ${seen.length}` });
+      });
+      // 25 s, 10 s upload limit: cut at the silences at 7-8 s and 16-17 s, as for whisper-1.
+      const input = await audioInput(25, [
+        { startSec: 0, endSec: 1 },
+        { startSec: 7, endSec: 8 },
+        { startSec: 16, endSec: 17 },
+      ]);
+      const r = await transcribeOpenAICompatible(input, { baseUrl: server.url, apiKey: KEY, model: "gpt-4o-mini-transcribe" }, { maxUploadBytes: 44 + 10 * 32000 });
+      expect(seen.map((s) => Math.round(s * 10) / 10)).toEqual([7.5, 9, 8.5]);
+      expect(r.segments).toEqual([
+        { startMs: 1000, endMs: 7000, text: "piece 1" },
+        { startMs: 8000, endMs: 16000, text: "piece 2" },
+        { startMs: 17000, endMs: 25000, text: "piece 3" },
+      ]);
+    });
+
+    it("looks for silences only when a GPT-4o model returned text", async () => {
+      let asked = 0;
+      const counted = async (seconds: number) => {
+        const input = await audioInput(seconds);
+        return { ...input, silences: async () => (asked++, []) };
+      };
+      server = await fakeServer((_req, res) => json(res, { text: "", segments: [{ start: 0, end: 1, text: "ok" }] }));
+      await transcribeOpenAICompatible(await counted(2), { baseUrl: server.url, apiKey: KEY, model: "whisper-1" });
+      expect(asked).toBe(0);
+      await server.close();
+
+      server = await fakeServer((_req, res) => json(res, { text: "  " }));
+      const empty = await transcribeOpenAICompatible(await counted(2), { baseUrl: server.url, apiKey: KEY, model: "gpt-4o-transcribe" });
+      expect(empty.segments).toEqual([]);
+      expect(asked).toBe(0);
+    });
   });
 });
 

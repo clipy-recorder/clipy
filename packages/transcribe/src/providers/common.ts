@@ -111,10 +111,23 @@ export function pieceGap(p: ChunkPlan, reason: string): TranscriptGap {
  * cut in silences, one piece at a time, and merge the results. A piece with
  * no speech at all is not sent and is reported as a gap.
  */
+/** The silences inside one piece, in seconds relative to the start of its audio. */
+export function silencesInPiece(silences: SilenceSpan[], p: Pick<ChunkPlan, "extractStartSec" | "extractDurSec">): SilenceSpan[] {
+  const end = p.extractStartSec + p.extractDurSec;
+  return silences
+    .filter((s) => s.endSec > p.extractStartSec && s.startSec < end)
+    .map((s) => ({ startSec: Math.max(0, s.startSec - p.extractStartSec), endSec: Math.min(p.extractDurSec, s.endSec - p.extractStartSec) }));
+}
+
+/**
+ * `run` is called once per piece with its audio and length. Its third
+ * argument gives that piece's silences (relative to the piece) for engines
+ * that return plain text; the silences are only looked for when it is called.
+ */
 export async function runInPieces(
   input: AudioInput,
   limits: ChunkLimits,
-  run: (wav: Buffer, durSec: number) => Promise<PieceOutput>,
+  run: (wav: Buffer, durSec: number, silences: () => Promise<SilenceSpan[]>) => Promise<PieceOutput>,
 ): Promise<{ segments: TranscriptSegment[]; language?: string; gaps: TranscriptGap[] }> {
   const total = input.info.durationSec;
   const silences = total > limits.maxSec ? await input.silences() : [];
@@ -132,7 +145,7 @@ export async function runInPieces(
     }
     const wav =
       plan.length === 1 ? await readFile(input.wavPath) : await readWavSlice(input.wavPath, input.info, p.extractStartSec, p.extractDurSec);
-    const out = await run(wav, p.extractDurSec);
+    const out = await run(wav, p.extractDurSec, async () => silencesInPiece(await input.silences(), p));
     language ??= out.language;
     pieces.push({ plan: p, segments: out.segments });
     input.onProgress?.((i + 1) / plan.length);
