@@ -1,3 +1,4 @@
+import process from "node:process";
 import { describe, expect, it } from "vitest";
 import type { Runner, RunResult } from "../src/proc.js";
 import { FAKE_FFMPEG } from "./fakeTools.js";
@@ -100,6 +101,25 @@ describe("macOS parsers", () => {
 describe("Windows parsers", () => {
   it("reads dshow audio devices in the current format, skipping alternative names", () => {
     expect(parseDshowAudioDevices(DSHOW_NEW)).toEqual(["Microphone Array (Realtek(R) Audio)", "Headset (Jabra Evolve2 65)"]);
+  });
+
+  it("includes multi-type dshow devices with audio and ignores video/unknown/none with CRLF", () => {
+    const crlf = [
+      '[dshow @ 0000020b8f6f5a40] "Integrated Camera" (video)',
+      '[dshow @ 0000020b8f6f5a40]   Alternative name "@device_pnp_\\\\?\\usb#vid_04f2"',
+      '[dshow @ 0000020b8f6f5a40] "Cam Link 4K" (audio, video)',
+      '[dshow @ 0000020b8f6f5a40]   Alternative name "@device_pnp_\\\\?\\usb#vid_0fd9"',
+      '[dshow @ 0000020b8f6f5a40] "Webcam Pro (USB)" (video, audio)',
+      '[dshow @ 0000020b8f6f5a40] "Mystery Capture" (unknown)',
+      '[dshow @ 0000020b8f6f5a40] "Unused Device" (none)',
+      '[dshow @ 0000020b8f6f5a40] "Microphone (Realtek(R) Audio)" (audio)',
+      "dummy: Immediate exit requested",
+    ].join("\r\n");
+    expect(parseDshowAudioDevices(crlf)).toEqual([
+      "Cam Link 4K",
+      "Webcam Pro (USB)",
+      "Microphone (Realtek(R) Audio)",
+    ]);
   });
 
   it("reads dshow audio devices in the older sectioned format", () => {
