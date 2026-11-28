@@ -5,6 +5,11 @@ screen, camera and voice and turns each take into an AREC file on your own
 machine: the video, the transcript, the moments that matter and a screenshot
 of each, ready for an AI agent to read. No account, nothing uploaded.
 
+Linux is currently an experimental development target. The Tauri application
+shell can be built and launched, but native screen recording, window selection,
+microphone capture and camera capture are not implemented in the Linux desktop
+app yet. The separate CLI capture package has its own Linux support.
+
 The app is called **Clipy Local** (`Clipy Local.app` on macOS, "Clipy Local"
 in the Windows Start menu, in the menu bar or tray, and in System Settings
 when macOS asks for permissions). You build it yourself from this
@@ -21,7 +26,8 @@ installed side by side.
 You need Rust 1.88 or newer, Node.js 20.19 or newer and pnpm. On macOS, Xcode or
 the Command Line Tools (macOS 12.3 or newer to run the app). On Windows,
 Visual Studio Build Tools with the C++ workload, and FFmpeg 7 shared
-libraries (see below).
+libraries (see below). On Ubuntu 24.04 or WSL2, install the Linux packages and
+FFmpeg 7 development libraries described below.
 
 ```bash
 cd desktop
@@ -47,10 +53,51 @@ The recorder encodes through FFmpeg 7.
   prebuilt FFmpeg framework into `src-tauri/target/native-deps/`. Run it once
   yourself before the first `pnpm tauri:dev`. Without it, Homebrew's
   `ffmpeg@7` works for compiling (`src-tauri/.cargo/config.toml`).
+
 - Windows: download a shared FFmpeg 7 build, set `FFMPEG_DIR` to its folder
   (the one with `bin`, `include` and `lib`), and the build copies its DLLs next
   to the app. The recorder encodes H.264 with libx264 on Windows, so the build
   needs FFmpeg with x264.
+
+### Linux development (experimental)
+
+
+Install the system build dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y build-essential curl wget file pkg-config libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf libwebkit2gtk-4.1-dev libclang-dev clang libasound2-dev libx264-dev nasm yasm
+```
+
+The following setup was tested on Ubuntu 24.04 under WSL2. WSLg provides the graphical display, and WSL2 provides an audio bridge.
+
+The desktop build requires FFmpeg 7. Ubuntu 24.04 ships an older version, so build FFmpeg 7.1.1 separately rather than replacing the system version:
+
+```bash
+wget https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz
+tar -xf ffmpeg-7.1.1.tar.xz
+cd ffmpeg-7.1.1
+./configure --prefix=/opt/ffmpeg-7.1.1 --enable-shared --disable-static --enable-gpl --enable-libx264 --enable-pic --disable-programs --disable-doc --disable-debug
+make -j"$(nproc)"
+sudo make install
+echo /opt/ffmpeg-7.1.1/lib | sudo tee /etc/ld.so.conf.d/ffmpeg-7.1.1.conf
+sudo ldconfig
+cd ..
+```
+
+Set these environment variables before building:
+
+```bash
+export FFMPEG_DIR=/opt/ffmpeg-7.1.1
+export PKG_CONFIG_PATH=/opt/ffmpeg-7.1.1/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig
+export BINDGEN_EXTRA_CLANG_ARGS="-I/opt/ffmpeg-7.1.1/include"
+export LD_LIBRARY_PATH=/opt/ffmpeg-7.1.1/lib:${LD_LIBRARY_PATH:-}
+export LIBCLANG_PATH=/usr/lib/llvm-18/lib
+export LLVM_CONFIG_PATH=/usr/bin/llvm-config-18
+```
+
+
+
 
 ### macOS permissions
 
