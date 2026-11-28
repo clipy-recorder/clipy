@@ -369,3 +369,50 @@ describe("long typing sessions", () => {
     expect(pairs.some((d) => kept.has(d))).toBe(true);
   });
 });
+
+describe("a model answer cut off mid-way", () => {
+  const realDelays = localPlannerRetry.delaysMs;
+  beforeEach(() => {
+    localPlannerRetry.delaysMs = [1, 1];
+  });
+  afterEach(() => {
+    localPlannerRetry.delaysMs = realDelays;
+  });
+
+  /** Drops the connection partway through the first `cuts` answers. */
+  async function flakyProvider(cuts: number) {
+    const seen = { requests: 0 };
+    const server = createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        seen.requests += 1;
+        if (seen.requests <= cuts) {
+          res.writeHead(200, { "Content-Type": "application/json", "Content-Length": "500" });
+          res.write('{"choices":', () => res.socket?.destroy());
+          return;
+        }
+        res.end(JSON.stringify({ choices: [{ message: { content: '{"moments":[]}' } }] }));
+      });
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    return { provider: { baseUrl: `http://127.0.0.1:${port}/v1`, model: "test/model" }, seen };
+  }
+
+  it("is retried like other transient failures", async () => {
+    const { provider, seen } = await flakyProvider(1);
+    const result = await planMoments(payload(), { provider });
+    expect(seen.requests).toBe(2);
+    expect(result.planner).toBe("rules+model");
+  });
+
+  it("gives up after three attempts with a message that says what happened", async () => {
+    const { provider, seen } = await flakyProvider(3);
+    const error = await planMoments(payload(), { provider }).catch((e: unknown) => e);
+    expect(seen.requests).toBe(3);
+    expect(error).toBeInstanceOf(LLMError);
+    expect((error as Error).message).toBe("Model provider answer was cut off");
+    expect(describePlannerError(error)).toMatchObject({ kind: "provider_error", transient: true });
+  });
+});
