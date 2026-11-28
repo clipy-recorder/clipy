@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, watch, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { audioInput, fakeServer, hasCommand, tempDir, type FakeServer } from "./helpers.js";
@@ -10,6 +10,7 @@ import {
   downloadModel,
   downloadVerified,
   DownloadTooLargeError,
+  extractArchiveMembers,
   LOCAL_MODELS,
   modelStatus,
   type LocalModel,
@@ -211,6 +212,48 @@ describe("downloadModel", () => {
     expect(readdirSync(dir).sort()).toEqual([".installed.json", "model.int8.onnx", "tokens.txt"]);
     expect(readFileSync(join(dir, "model.int8.onnx"), "utf8")).toBe("model-bytes");
     expect(modelStatus("english-fast", root).installed).toBe(true);
+  });
+
+  it.runIf(hasCommand("bzip2"))("extracts a multi-chunk member by its long name and honours cancellation before unpacking", async () => {
+    const src = tempDir();
+    const archive = join(src, "model.tar.bz2");
+    const name = "speech-model-".repeat(10) + ".onnx";
+    const data = Buffer.alloc(150_003);
+    for (let i = 0; i < data.length; i++) data[i] = i % 251;
+    writeFileSync(join(src, name), data);
+    writeFileSync(join(src, "skip"), Buffer.alloc(96_731, 7));
+    execFileSync("tar", ["-cjf", archive, "-C", src, "skip", name]);
+    const members = [{ name, path: "model.onnx", sha256: sha(data) }];
+    const dest = tempDir();
+    await expect(extractArchiveMembers(archive, members, dest, "English", AbortSignal.abort())).rejects.toMatchObject({ name: "AbortError" });
+    expect(readdirSync(dest)).toEqual([]);
+    await extractArchiveMembers(archive, members, dest, "English");
+    expect(readdirSync(dest)).toEqual(["model.onnx"]);
+    expect(readFileSync(join(dest, "model.onnx"))).toEqual(data);
+    await expect(extractArchiveMembers(archive, [{ ...members[0], name: "absent" }], dest, "English")).rejects.toThrow("missing model.onnx");
+    await expect(extractArchiveMembers(archive, members, join(dest, "absent"), "English")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.runIf(hasCommand("bzip2"))("cancels while a member is being written and preserves an existing destination", async () => {
+    const src = tempDir();
+    const dest = tempDir();
+    const archive = join(src, "model.tar.bz2");
+    const data = Buffer.alloc(8 * 1024 * 1024, 3);
+    writeFileSync(join(src, "model"), data);
+    execFileSync("tar", ["-cjf", archive, "-C", src, "model"]);
+    writeFileSync(join(dest, "model"), "previous");
+    const controller = new AbortController();
+    const watcher = watch(dest, (_event, name) => {
+      if (name?.endsWith(".tmp")) controller.abort();
+    });
+    try {
+      await expect(extractArchiveMembers(archive, [{ name: "model", path: "model", sha256: sha(data) }], dest, "English", controller.signal))
+        .rejects.toMatchObject({ name: "AbortError" });
+    } finally {
+      watcher.close();
+    }
+    expect(readdirSync(dest)).toEqual(["model"]);
+    expect(readFileSync(join(dest, "model"), "utf8")).toBe("previous");
   });
 
   it("refuses a file larger than its pinned size and leaves no partial folder", async () => {
