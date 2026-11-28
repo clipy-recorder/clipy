@@ -85,8 +85,8 @@ To run every suite without installing those yourself, use the dev container:
 open the repository in GitHub Codespaces, or in VS Code with the Dev
 Containers extension, and it picks up `.devcontainer/devcontainer.json`. It
 has what the CI packages job has (Ubuntu 24.04, Node 24, pnpm at the
-`packageManager` version through corepack, and ffmpeg, Xvfb, xauth and
-libxtst6) and runs `pnpm install --frozen-lockfile` when it is created, so
+`packageManager` version through corepack, and ffmpeg, Xvfb, xauth, libxtst6
+and python3) and runs `pnpm install --frozen-lockfile` when it is created, so
 `pnpm run typecheck && pnpm test` there runs the virtual-display capture tests
 too.
 

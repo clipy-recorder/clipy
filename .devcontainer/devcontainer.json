@@ -1,6 +1,6 @@
 // What the CI packages job has: Ubuntu 24.04, Node 24, pnpm at the
-// packageManager version through corepack, and ffmpeg, Xvfb, xauth and
-// libxtst6, so the Linux capture tests record a real virtual display instead
+// packageManager version through corepack, and ffmpeg, Xvfb, xauth, libxtst6
+// and python3, so the Linux capture tests record a real virtual display instead
 // of being skipped. Open it in GitHub Codespaces or with VS Code's Dev
 // Containers extension; see "Packages" in CONTRIBUTING.md.
 {
@@ -20,6 +20,8 @@
     "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0"
   },
   // Once, when the container is created (and in Codespaces prebuilds): the CI
-  // job's apt packages, then pnpm and the dependencies.
-  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libxtst6 && corepack enable && pnpm install --frozen-lockfile"
+  // job's apt packages, plus python3, which the CI runner already has and the
+  // capture tests need (the pointer helper, the display access grant and the
+  // XTest driver are Python), then pnpm and the dependencies.
+  "onCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg xvfb xauth libxtst6 python3 && corepack enable && pnpm install --frozen-lockfile"
 }
