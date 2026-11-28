@@ -233,6 +233,48 @@ export async function listDshowAudio(run: Runner = realRunner, env: NodeJS.Proce
 }
 
 // ---------------------------------------------------------------------------
+// Microphones
+// ---------------------------------------------------------------------------
+
+/**
+ * `pactl list short sources`: `0\talsa_input.pci-0000_00_1f.3.analog-stereo\tmodule-alsa-card.c\ts16le 2ch 44100Hz\tSUSPENDED`.
+ * `.monitor` sources are the sound an output is playing, not a microphone.
+ */
+export function parsePactlSources(text: string): string[] {
+  const out: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const name = line.split("\t")[1]?.trim();
+    if (!name || name.endsWith(".monitor") || out.includes(name)) continue;
+    out.push(name);
+  }
+  return out;
+}
+
+/**
+ * Names that `startCapture({ microphone })` accepts: avfoundation audio
+ * devices on macOS, dshow audio devices on Windows, PulseAudio sources on
+ * Linux (or ALSA's `default` when PulseAudio cannot be asked).
+ */
+export async function listMicrophones(platform: Platform = currentPlatform(), opts: Omit<ListOptions, "xDisplay"> = {}): Promise<string[]> {
+  const run = opts.run ?? realRunner;
+  const env = opts.env ?? process.env;
+  if (platform === "linux") {
+    const r = await run("pactl", ["list", "short", "sources"], env);
+    const names = r.status === 0 ? parsePactlSources(r.stdout) : [];
+    return names.length > 0 ? names : ["default"];
+  }
+  if (platform === "darwin") {
+    const devices = await listAvfoundation(run, env);
+    return unique(devices?.audio.map((d) => d.name) ?? []);
+  }
+  return unique(await listDshowAudio(run, env));
+}
+
+function unique(names: string[]): string[] {
+  return [...new Set(names)];
+}
+
+// ---------------------------------------------------------------------------
 // Source ids
 // ---------------------------------------------------------------------------
 
