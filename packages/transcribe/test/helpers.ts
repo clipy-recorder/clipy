@@ -82,9 +82,9 @@ export function wavSeconds(buf: Buffer): number {
   return buf.readUInt32LE(40) / 32000;
 }
 
-export function hasCommand(cmd: string): boolean {
+export function hasCommand(cmd: string, versionArg = "--version"): boolean {
   try {
-    execFileSync(cmd, ["--version"], { stdio: "ignore" });
+    execFileSync(cmd, [versionArg], { stdio: "ignore" });
     return true;
   } catch {
     return false;

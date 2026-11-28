@@ -13,11 +13,13 @@ import { trimPieceToSpeech } from "../src/local.js";
 import { audioInputFor, piecesWithoutSpeech, type AudioInput } from "../src/providers/common.js";
 import { planChunks } from "../src/chunking.js";
 import { transcribeOpenAICompatible } from "../src/providers/openai.js";
-import { fakeServer, formData, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
+import { fakeServer, formData, hasCommand, json, tempDir, wavSeconds, type FakeServer } from "./helpers.js";
 
 function ff(args: string[]) {
   execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", ...args]);
 }
+
+const hasFfmpeg = hasCommand("ffmpeg", "-version");
 
 let server: FakeServer | null = null;
 afterEach(async () => {
@@ -40,7 +42,7 @@ describe("silenceThresholds", () => {
   });
 });
 
-describe("quiet speech", () => {
+describe.skipIf(!hasFfmpeg)("quiet speech", () => {
   it("sends every piece holding quiet speech and reports the silent piece as a gap", async () => {
     const dir = tempDir();
     const wav = join(dir, "quiet.wav");
@@ -79,7 +81,7 @@ describe("quiet speech", () => {
   });
 });
 
-describe("a file with no audio track", () => {
+describe.skipIf(!hasFfmpeg)("a file with no audio track", () => {
   it("is one gap over the file for every kind, not an error", async () => {
     const dir = tempDir();
     const video = join(dir, "video-only.mp4");
@@ -102,7 +104,7 @@ describe("a file with no audio track", () => {
   });
 });
 
-describe("file names with a colon", () => {
+describe.skipIf(!hasFfmpeg)("file names with a colon", () => {
   it("are read as local files, not as an ffmpeg protocol", async () => {
     const dir = tempDir();
     const prev = process.cwd();
@@ -133,7 +135,7 @@ describe("trimPieceToSpeech", () => {
 });
 
 describe("pieces of background noise", () => {
-  it("are not sent to engines that invent words in noise, in a recording at a normal level", async () => {
+  it.skipIf(!hasFfmpeg)("are not sent to engines that invent words in noise, in a recording at a normal level", async () => {
     const dir = tempDir();
     const wav = join(dir, "noise.wav");
     // A tone at a normal level for 8 s, 10 s of fan-like noise near -42 dB, the tone again for 7 s.

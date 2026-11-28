@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { detectSilences, extractAudio, readWavInfo, readWavSlice } from "../src/audio.js";
 import { transcribe } from "../src/index.js";
-import { tempDir } from "./helpers.js";
+import { hasCommand, tempDir } from "./helpers.js";
 
+const hasFfmpeg = hasCommand("ffmpeg", "-version");
 const dir = tempDir();
 const video = join(dir, "clip.mp4");
 const gappy = join(dir, "gappy.m4a");
@@ -17,6 +18,7 @@ function ff(args: string[]) {
 }
 
 beforeAll(() => {
+  if (!hasFfmpeg) return;
   // 3 s of 48 kHz stereo tone with a small video track.
   ff(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=3", "-f", "lavfi", "-i", "color=c=blue:s=64x64:d=3", "-ac", "2", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", video]);
   // tone 2 s, silence 2 s, tone 2 s
@@ -30,7 +32,7 @@ beforeAll(() => {
   ff(["-f", "lavfi", "-i", "color=c=red:s=64x64:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", silentVideo]);
 });
 
-describe("extractAudio", () => {
+describe.skipIf(!hasFfmpeg)("extractAudio", () => {
   const prev = process.env.CLIPY_FFMPEG;
   afterEach(() => {
     if (prev === undefined) delete process.env.CLIPY_FFMPEG;
@@ -64,7 +66,7 @@ describe("extractAudio", () => {
   });
 });
 
-describe("detectSilences", () => {
+describe.skipIf(!hasFfmpeg)("detectSilences", () => {
   it("finds the silent stretch", async () => {
     const wav = join(dir, "gappy.wav");
     await extractAudio(gappy, wav);
@@ -76,7 +78,7 @@ describe("detectSilences", () => {
   });
 });
 
-describe("transcribe with transcription off", () => {
+describe.skipIf(!hasFfmpeg)("transcribe with transcription off", () => {
   it("returns no segments and one gap over the file, and cleans up its temp folder", async () => {
     const prevTmp = process.env.TMPDIR;
     const scratch = tempDir();
