@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { Icon, InlineSelect, Notice, SectionTitle, SettingRow } from "../components/recorder/ui";
 import { LOCAL_PROJECT_URL } from "../lib/edition";
-import { useDesktopT } from "../lib/messages";
+import { useDesktopT, type DesktopT } from "../lib/messages";
 import { deviceName, isWindows } from "../lib/platform";
 import {
   downloadLocalModel,
@@ -100,8 +100,21 @@ function keyUpdate(draft: string, replacing: boolean): KeyUpdate {
   return replacing ? { action: "clear" } : { action: "keep" };
 }
 
-function formatMegabytes(bytes: number): string {
-  return `${Math.max(1, Math.round(bytes / 1e6))} MB`;
+function providerLabel(provider: ProviderPreset, t: DesktopT): string {
+  if (provider.value === "none") return t("local.preferences.providers.none");
+  if (provider.value === "custom") return t("local.preferences.providers.custom");
+  return provider.label;
+}
+
+function transcriptionLabel(option: TranscriptionOption, t: DesktopT): string {
+  if (option.value === "apple") return t("local.preferences.transcription.apple");
+  if (option.value === "local:english-fast") return t("local.preferences.transcription.englishFast");
+  if (option.value === "local:multilingual") return t("local.preferences.transcription.multilingual");
+  return t("local.preferences.transcription.withKey", { provider: option.provider });
+}
+
+function formatMegabytes(bytes: number, t: DesktopT): string {
+  return t("local.preferences.megabytes", { mb: Math.max(1, Math.round(bytes / 1e6)) });
 }
 
 const FIELD =
@@ -120,6 +133,7 @@ function KeyField({
   onDraft,
   onReplace,
   optional,
+  t,
 }: {
   label: string;
   hasKey: boolean;
@@ -128,16 +142,17 @@ function KeyField({
   onDraft: (value: string) => void;
   onReplace: (replacing: boolean) => void;
   optional?: boolean;
+  t: DesktopT;
 }) {
   if (hasKey && !replacing) {
     return (
       <div className="flex items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[13px] text-ink-secondary">
           <Icon name="check" size={14} className="shrink-0 text-status-ok" />
-          {`${label} saved`}
+          {t("local.preferences.key.saved", { label })}
         </span>
         <button type="button" className={SMALL_BUTTON} onClick={() => onReplace(true)}>
-          Replace
+          {t("local.preferences.key.replace")}
         </button>
       </div>
     );
@@ -149,7 +164,7 @@ function KeyField({
         autoComplete="off"
         spellCheck={false}
         aria-label={label}
-        placeholder={optional ? `${label} (optional)` : label}
+        placeholder={optional ? t("local.preferences.key.optional", { label }) : label}
         value={draft}
         onChange={(event) => onDraft(event.target.value)}
         className={FIELD}
@@ -157,16 +172,24 @@ function KeyField({
       {hasKey && (
         <div className="flex items-center gap-3 text-[12px]">
           <button type="button" className="font-medium text-sheet-link hover:underline" onClick={() => { onDraft(""); onReplace(false); }}>
-            Keep the saved key
+            {t("local.preferences.key.keep")}
           </button>
-          <span className="text-ink-secondary">Leave empty and save to remove it.</span>
+          <span className="text-ink-secondary">{t("local.preferences.key.removeHint")}</span>
         </div>
       )}
     </div>
   );
 }
 
-function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDto; onSaved: (next: LocalSettingsDto) => void }) {
+function ModelProviderSection({
+  settings,
+  onSaved,
+  t,
+}: {
+  settings: LocalSettingsDto;
+  onSaved: (next: LocalSettingsDto) => void;
+  t: DesktopT;
+}) {
   const stored = settings.model;
   const [preset, setPreset] = useState<ModelPreset>(stored.preset);
   const [model, setModel] = useState(stored.model ?? "");
@@ -212,7 +235,13 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
       setKeyDraft("");
       setReplacingKey(false);
       onSaved(next);
-      setMessage({ tone: "ok", text: preset === "none" ? "Saved. Moments come from rules only." : `Saved. ${info.label} picks spoken cues from the next recording.` });
+      setMessage({
+        tone: "ok",
+        text:
+          preset === "none"
+            ? t("local.preferences.model.savedRulesOnly")
+            : t("local.preferences.model.savedProvider", { provider: providerLabel(info, t) }),
+      });
     } catch (err) {
       setMessage({ tone: "error", text: String(err) });
     } finally {
@@ -222,35 +251,40 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
 
   return (
     <SettingRow
-      title="Moment selection"
-      subtitle="Rules pick moments from your clicks, Flare and drawing. A model can also pick the moments you point out while talking."
+      title={t("local.preferences.model.title")}
+      subtitle={t("local.preferences.model.subtitle")}
       trailing={
         <InlineSelect<ModelPreset>
-          ariaLabel="Moment selection"
+          ariaLabel={t("local.preferences.model.title")}
           value={preset}
           onChange={choose}
-          items={PROVIDERS.map((p) => ({ value: p.value, label: p.label }))}
+          items={PROVIDERS.map((p) => ({ value: p.value, label: providerLabel(p, t) }))}
         />
       }
     >
       <div className="space-y-2">
         {preset !== "none" && info.key !== "none" && (
           <KeyField
-            label="API key"
+            label={t("local.preferences.model.apiKey")}
             hasKey={hasKey}
             draft={keyDraft}
             replacing={replacingKey}
             onDraft={setKeyDraft}
             onReplace={setReplacingKey}
             optional={info.key === "optional"}
+            t={t}
           />
         )}
         {preset !== "none" && (
           <input
             type="text"
             spellCheck={false}
-            aria-label="Model"
-            placeholder={info.defaultModel ? `Model (default ${info.defaultModel})` : "Model name"}
+            aria-label={t("local.preferences.model.modelLabel")}
+            placeholder={
+              info.defaultModel
+                ? t("local.preferences.model.modelDefaultPlaceholder", { model: info.defaultModel })
+                : t("local.preferences.model.modelPlaceholder")
+            }
             value={model}
             onChange={(event) => setModel(event.target.value)}
             className={FIELD}
@@ -260,8 +294,12 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
           <input
             type="url"
             spellCheck={false}
-            aria-label="Base URL"
-            placeholder={info.defaultUrl ? `Base URL (default ${info.defaultUrl})` : "Base URL, for example http://127.0.0.1:8080/v1"}
+            aria-label={t("local.preferences.model.baseUrlLabel")}
+            placeholder={
+              info.defaultUrl
+                ? t("local.preferences.model.baseUrlDefaultPlaceholder", { url: info.defaultUrl })
+                : t("local.preferences.model.baseUrlPlaceholder")
+            }
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
             className={FIELD}
@@ -274,7 +312,7 @@ function ModelProviderSection({ settings, onSaved }: { settings: LocalSettingsDt
             </span>
           )}
           <button type="button" className={SAVE_BUTTON} disabled={saving} onClick={() => void save()}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("local.preferences.saving") : t("local.preferences.save")}
           </button>
         </div>
       </div>
@@ -286,17 +324,19 @@ function ModelDownload({
   status,
   progress,
   onDownload,
+  t,
 }: {
   status: LocalModelStatusDto | undefined;
   progress: LocalModelProgressDto | null;
   onDownload: () => void;
+  t: DesktopT;
 }) {
   if (!status) return null;
   if (status.installed) {
     return (
       <p className="flex items-center gap-1.5 text-[13px] text-ink-secondary">
         <Icon name="check" size={14} className="shrink-0 text-status-ok" />
-        {`Downloaded. Transcribes on this ${deviceName}.`}
+        {t("local.preferences.download.installed", { device: deviceName })}
       </p>
     );
   }
@@ -311,7 +351,12 @@ function ModelDownload({
           <div className="h-full rounded-full bg-flash-500 transition-[width]" style={{ width: `${Math.round(ratio * 100)}%` }} />
         </div>
         <p className="text-[12px] text-ink-secondary">
-          {progress?.stage === "verifying" ? "Checking the download…" : `Downloading ${formatMegabytes(received)} of ${formatMegabytes(total)}`}
+          {progress?.stage === "verifying"
+            ? t("local.preferences.download.verifying")
+            : t("local.preferences.download.downloading", {
+                received: formatMegabytes(received, t),
+                total: formatMegabytes(total, t),
+              })}
         </p>
       </div>
     );
@@ -319,16 +364,26 @@ function ModelDownload({
   return (
     <div className="flex items-center gap-2">
       <span className="min-w-0 flex-1 text-[13px] text-ink-secondary">
-        {progress?.stage === "failed" && progress.error ? progress.error : `Not downloaded yet (${formatMegabytes(status.sizeBytes)}).`}
+        {progress?.stage === "failed" && progress.error
+          ? progress.error
+          : t("local.preferences.download.notDownloaded", { size: formatMegabytes(status.sizeBytes, t) })}
       </span>
       <button type="button" className={SAVE_BUTTON} onClick={onDownload}>
-        Download
+        {t("local.preferences.download.button")}
       </button>
     </div>
   );
 }
 
-function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDto; onSaved: (next: LocalSettingsDto) => void }) {
+function TranscriptionSection({
+  settings,
+  onSaved,
+  t,
+}: {
+  settings: LocalSettingsDto;
+  onSaved: (next: LocalSettingsDto) => void;
+  t: DesktopT;
+}) {
   const stored = settings.transcription;
   const [choice, setChoice] = useState<TranscriptionChoice>(choiceOf(stored));
   const [model, setModel] = useState(stored.model ?? "");
@@ -339,6 +394,7 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
   const [models, setModels] = useState<LocalModelStatusDto[]>([]);
   const [progress, setProgress] = useState<LocalModelProgressDto | null>(null);
   const option = TRANSCRIPTION_OPTIONS.find((o) => o.value === choice) ?? TRANSCRIPTION_OPTIONS[0];
+  const optionLabel = transcriptionLabel(option, t);
   const { kind, localModel } = splitChoice(choice);
   const keyed = option.provider !== "";
   const hasKey = stored.hasApiKey && choiceOf(stored) === choice;
@@ -392,7 +448,7 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
       setKeyDraft("");
       setReplacingKey(false);
       onSaved(next);
-      setMessage({ tone: "ok", text: "Saved. Used from the next recording." });
+      setMessage({ tone: "ok", text: t("local.preferences.transcription.saved") });
     } catch (err) {
       setMessage({ tone: "error", text: String(err) });
     } finally {
@@ -414,50 +470,52 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
   if (!isWindows) {
     return (
       <SettingRow
-        title="Transcription"
-        subtitle="On this Mac with Apple Speech, while you record. The audio never leaves this Mac."
+        title={t("local.preferences.transcription.title")}
+        subtitle={t("local.preferences.transcription.macSubtitle")}
       />
     );
   }
 
   return (
     <SettingRow
-      title="Transcription"
-      subtitle="A downloaded model transcribes on this PC. A provider key sends the audio to that provider instead."
+      title={t("local.preferences.transcription.title")}
+      subtitle={t("local.preferences.transcription.windowsSubtitle")}
       trailing={
         <InlineSelect<TranscriptionChoice>
-          ariaLabel="Transcription"
+          ariaLabel={t("local.preferences.transcription.title")}
           value={choice}
           onChange={choose}
-          items={TRANSCRIPTION_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+          items={TRANSCRIPTION_OPTIONS.map((o) => ({ value: o.value, label: transcriptionLabel(o, t) }))}
         />
       }
     >
       <div className="space-y-2">
-        <p className="text-[13px] font-medium text-ink-text">{option.label}</p>
+        <p className="text-[13px] font-medium text-ink-text">{optionLabel}</p>
         {kind === "local" && localModel && (
           <ModelDownload
             status={models.find((m) => m.id === localModel)}
             progress={progress?.model === localModel ? progress : null}
             onDownload={() => download(localModel)}
+            t={t}
           />
         )}
         {keyed && (
           <KeyField
-            label={`${option.provider} API key`}
+            label={t("local.preferences.transcription.providerApiKey", { provider: option.provider })}
             hasKey={hasKey}
             draft={keyDraft}
             replacing={replacingKey}
             onDraft={setKeyDraft}
             onReplace={setReplacingKey}
+            t={t}
           />
         )}
         {keyed && (
           <input
             type="text"
             spellCheck={false}
-            aria-label="Transcription model"
-            placeholder="Model (optional, the provider's default otherwise)"
+            aria-label={t("local.preferences.transcription.modelLabel")}
+            placeholder={t("local.preferences.transcription.modelPlaceholder")}
             value={model}
             onChange={(event) => setModel(event.target.value)}
             className={FIELD}
@@ -470,7 +528,7 @@ function TranscriptionSection({ settings, onSaved }: { settings: LocalSettingsDt
             </span>
           )}
           <button type="button" className={SAVE_BUTTON} disabled={saving || !dirty} onClick={() => void save()}>
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("local.preferences.saving") : t("local.preferences.save")}
           </button>
         </div>
       </div>
@@ -513,25 +571,33 @@ export function LocalPreferences({ version, onWhatsNew }: { version: string | nu
 
   return (
     <>
-      <SectionTitle>AI and transcription</SectionTitle>
+      <SectionTitle>{t("local.preferences.sections.aiAndTranscription")}</SectionTitle>
       {settings ? (
         <>
-          <ModelProviderSection settings={settings} onSaved={setSettings} />
-          <TranscriptionSection settings={settings} onSaved={setSettings} />
+          <ModelProviderSection settings={settings} onSaved={setSettings} t={t} />
+          <TranscriptionSection settings={settings} onSaved={setSettings} t={t} />
         </>
       ) : (
-        <p className="px-5 py-3 text-[12px] text-ink-secondary">{loadError ?? "Loading settings…"}</p>
+        <p className="px-5 py-3 text-[12px] text-ink-secondary">{loadError ?? t("local.preferences.loading")}</p>
       )}
       <div className="px-5 pt-3">
         <Notice tone="info">
-          {`With no model provider and ${isWindows ? "a downloaded transcription model" : "Apple Speech"}, nothing leaves this ${deviceName}. A model provider receives the transcript text, click labels and a bounded sample of pointer and key events. A transcription key sends the audio to that provider.`}
+          {t(isWindows ? "local.preferences.privacyNoticeWindows" : "local.preferences.privacyNoticeMac", { device: deviceName })}
         </Notice>
       </div>
 
-      <SectionTitle>About</SectionTitle>
-      <LinkRow label="Clipy Local" hint={appVersion ? `Version ${appVersion} · source and setup notes` : "Source and setup notes"} onClick={() => openUrl(LOCAL_PROJECT_URL)} />
-      <LinkRow label="What's new" hint="New features, and a place to try each one" onClick={onWhatsNew} />
-      <LinkRow label="Releases" hint="New versions of Clipy Local" onClick={() => openUrl(`${LOCAL_PROJECT_URL}/releases`)} />
+      <SectionTitle>{t("local.preferences.sections.about")}</SectionTitle>
+      <LinkRow
+        label="Clipy Local"
+        hint={
+          appVersion
+            ? t("local.preferences.about.versionHint", { version: appVersion })
+            : t("local.preferences.about.sourceHint")
+        }
+        onClick={() => openUrl(LOCAL_PROJECT_URL)}
+      />
+      <LinkRow label={t("settings.links.whatsNew")} hint={t("settings.links.whatsNewHint")} onClick={onWhatsNew} />
+      <LinkRow label={t("local.preferences.about.releases")} hint={t("local.preferences.about.releasesHint")} onClick={() => openUrl(`${LOCAL_PROJECT_URL}/releases`)} />
       <p className="px-5 pt-3 text-[12px] leading-snug text-ink-secondary">
         {/* The full app's name is a value, so the local edition's brand swap leaves it as Clipy. */}
         {t("local.fullApp.pitch", { fullApp: "Clipy" })}{" "}
