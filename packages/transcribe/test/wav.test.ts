@@ -73,6 +73,13 @@ describe("readWavInfo", () => {
     expect(info.dataBytes).toBe(640);
   });
 
+  it("skips the pad byte after an odd-length LIST chunk that comes before fmt", async () => {
+    const list = chunk("LIST", Buffer.from("INF")); // 3 bytes + 1 pad byte
+    const pcm = Buffer.alloc(640);
+    const info = await readWavInfo(write(riff(list, fmtChunk(1, 16000, 16), chunk("data", pcm))));
+    expect(info).toMatchObject({ sampleRate: 16000, channels: 1, bitsPerSample: 16, dataBytes: 640 });
+  });
+
   it("trusts the file size when a streamed WAV has a placeholder data length", async () => {
     const pcm = Buffer.alloc(16000);
     const file = wavFromPcm(pcm);
@@ -88,6 +95,8 @@ describe("readWavInfo", () => {
     expect(info.dataBytes).toBe(8000);
   });
 
+  // A data chunk of length 0 is a valid, empty recording: zero bytes of audio is zero seconds,
+  // so durationSec === 0 is the correct reading (not an error and not NaN).
   it("reports an empty data chunk as zero seconds", async () => {
     const info = await readWavInfo(write(wavFromPcm(Buffer.alloc(0))));
     expect(info.dataBytes).toBe(0);
@@ -125,6 +134,16 @@ describe("readWavSlice", () => {
     const sliceInfo = await readWavInfo(write(slice));
     expect(sliceInfo).toMatchObject({ sampleRate: 16000, channels: 1, bitsPerSample: 16, dataBytes: 16000 });
     expect(slice.subarray(44).equals(pcm.subarray(8000, 24000))).toBe(true);
+  });
+
+  it("clamps a slice that starts before 0 to the start of the audio", async () => {
+    const pcm = Buffer.alloc(32000);
+    for (let i = 0; i < pcm.length; i += 2) pcm.writeInt16LE((i / 2) % 1000, i);
+    const path = write(wavFromPcm(pcm));
+    const info = await readWavInfo(path);
+    const slice = await readWavSlice(path, info, -0.5, 1); // covers [-0.5 s, 0.5 s) -> [0 s, 0.5 s)
+    expect(slice.readUInt32LE(40)).toBe(16000);
+    expect(slice.subarray(44).equals(pcm.subarray(0, 16000))).toBe(true);
   });
 
   it("clamps a slice that runs past the end", async () => {
